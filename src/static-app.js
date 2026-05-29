@@ -394,6 +394,12 @@ function normalizeApiJob(job, fallbackSource = "") {
 }
 
 async function login() {
+  const savedToken = localStorage.getItem("lazy60_access_token");
+  if (savedToken) {
+    state.authToken = savedToken;
+    await loadSupabaseUser(savedToken);
+    return;
+  }
   if (!state.supabaseUrl || !state.supabaseAnonKey) await checkApiOnce();
   if (state.supabaseUrl && state.supabaseAnonKey) {
     const redirectTo = window.location.origin + window.location.pathname;

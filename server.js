@@ -39,6 +39,7 @@ http.createServer(async (request, response) => {
 
     serveStatic(url.pathname, response);
   } catch (error) {
+    console.error("Request failed:", request.method, request.url, error.stack || error.message);
     sendJson(response, 500, { error: error.message || "Server error" });
   }
 }).listen(port, host, () => {
@@ -102,6 +103,7 @@ async function handleApi(request, response, url) {
     try {
       body = verifyStripeWebhook(request, raw);
     } catch (error) {
+      console.warn("Stripe webhook rejected:", error.message);
       sendJson(response, 400, { error: error.message });
       return;
     }
@@ -110,20 +112,20 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, { received: true, ignored: true });
       return;
     }
-    const pack = getStripePack(session.metadata?.pack);
+    const pack = getStripePack(session.metadata?.pack) || getStripePackByAmount(session.amount_total);
     const email = session.client_reference_id || session.customer_email;
     if (!pack || !email) {
       sendJson(response, 400, { error: "Missing pack or email in Stripe session" });
       return;
     }
-    const previousEmail = user.email;
+    const previousUser = { ...user, ledger: [...(user.ledger || [])] };
     user = { ...defaultUser, email: String(email).trim().toLowerCase() };
     await addPoints(pack.points, {
       type: "stripe_checkout_completed",
       pack: pack.id,
       stripeSessionId: session.id
     });
-    user = { ...defaultUser, email: previousEmail };
+    user = previousUser;
     sendJson(response, 200, { received: true });
     return;
   }
@@ -528,6 +530,15 @@ function getStripePack(packId) {
     pro: { id: "pro", name: "Pro Pack", dollars: 59, points: 740 }
   };
   return packs[packId] || null;
+}
+
+function getStripePackByAmount(amountTotal) {
+  const dollars = Number(amountTotal || 0) / 100;
+  return Object.values({
+    starter: { id: "starter", name: "Starter Pack", dollars: 9, points: 90 },
+    growth: { id: "growth", name: "Growth Pack", dollars: 29, points: 330 },
+    pro: { id: "pro", name: "Pro Pack", dollars: 59, points: 740 }
+  }).find((pack) => pack.dollars === dollars) || null;
 }
 
 async function createStripeCheckoutSession(pack, request) {
