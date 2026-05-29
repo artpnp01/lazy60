@@ -18,12 +18,25 @@ const PACKS = [
   ["pro", "Pro", 59, 740, "+25% Bonus", "Includes 150 bonus points"]
 ];
 
+const bootstrapToken = localStorage.getItem("lazy60_access_token") || "";
+const bootstrapEmail = localStorage.getItem("lazy60_user_email") || localStorage.getItem("lazy60_checkout_email") || "hi@lazy60.com";
+const bootstrapQuery = new URLSearchParams(window.location.search);
+const bootstrapHash = new URLSearchParams(window.location.hash.slice(1));
+const needsAuthRestore = Boolean(
+  bootstrapToken ||
+  bootstrapQuery.get("code") ||
+  bootstrapHash.get("access_token") ||
+  bootstrapQuery.get("checkout") === "success"
+);
+
 const state = {
   route: "app",
   adminTab: "Design Types",
   loggedIn: false,
-  email: "hi@lazy60.com",
-  authToken: "",
+  authLoading: needsAuthRestore,
+  paymentSyncing: false,
+  email: bootstrapEmail,
+  authToken: bootstrapToken,
   supabaseUrl: "",
   supabaseAnonKey: "",
   stripeEnabled: false,
@@ -78,8 +91,11 @@ function render() {
 }
 
 function authHtml() {
+  if (state.authLoading) {
+    return `<div class="user-chip muted">${esc(state.email)}</div><div class="points">Restoring...</div>`;
+  }
   if (!state.loggedIn) return `<button class="black" data-action="login">G Sign in with Google</button>`;
-  return `<div class="user-chip">${esc(state.email)}</div><div class="points">${state.points} Points</div><button class="black small" data-action="topup">+ Top-up</button>`;
+  return `<div class="user-chip">${esc(state.email)}</div><div class="points">${state.paymentSyncing ? "Syncing payment..." : `${state.points} Points`}</div><button class="black small" data-action="topup">+ Top-up</button>`;
 }
 
 function appHtml() {
@@ -457,6 +473,8 @@ function applyUser(user) {
   state.points = user.points;
   state.paid = user.paid;
   state.freeAvailable = user.freeAvailable;
+  state.loggedIn = true;
+  state.authLoading = false;
 }
 
 setInterval(() => {
@@ -490,6 +508,8 @@ async function checkApiOnce() {
     await handleCheckoutReturn();
   } catch {
     state.apiOnline = false;
+    state.authLoading = false;
+    render();
   }
 }
 
@@ -503,6 +523,7 @@ async function handleCheckoutReturn() {
   }
   if (!state.loggedIn) {
     toast("Checkout returned. Please sign in again to add points.");
+    state.authLoading = false;
     return;
   }
   const pack = query.get("pack");
@@ -512,15 +533,30 @@ async function handleCheckoutReturn() {
       await topup(found[3]);
       toast("Checkout success. Points added in development mode.");
     } else {
-      const data = await apiGet("/api/me");
-      applyUser(data.user);
-      toast("Checkout success. Points will update after Stripe confirms payment.");
+      await syncCheckoutPoints();
     }
     await loadJobs();
   }
   localStorage.removeItem("lazy60_checkout_email");
   window.history.replaceState({}, document.title, window.location.pathname);
   render();
+}
+
+async function syncCheckoutPoints() {
+  const startingPoints = state.points;
+  state.paymentSyncing = true;
+  state.authLoading = false;
+  render();
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const data = await apiGet("/api/me");
+    applyUser(data.user);
+    if (state.points > startingPoints || attempt === 7) break;
+    await wait(1500);
+  }
+
+  state.paymentSyncing = false;
+  toast(state.points > startingPoints ? "Checkout success. Points added." : "Checkout success. Points are still syncing.");
 }
 
 async function restoreSupabaseSession() {
@@ -548,6 +584,8 @@ async function restoreSupabaseSession() {
   if (savedToken) {
     state.authToken = savedToken;
     await loadSupabaseUser(savedToken);
+  } else {
+    state.authLoading = false;
   }
 }
 
@@ -580,15 +618,26 @@ async function loadSupabaseUser(token) {
   const data = await response.json();
   if (!response.ok || !data.email) {
     localStorage.removeItem("lazy60_access_token");
+    localStorage.removeItem("lazy60_user_email");
+    state.authToken = "";
+    state.loggedIn = false;
+    state.authLoading = false;
+    render();
     return;
   }
   state.loggedIn = true;
+  state.authLoading = false;
   state.email = data.email.toLowerCase();
   localStorage.setItem("lazy60_access_token", token);
+  localStorage.setItem("lazy60_user_email", state.email);
   const me = await apiGet("/api/me");
   applyUser(me.user);
   await loadJobs();
   render();
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function apiGet(path) {
