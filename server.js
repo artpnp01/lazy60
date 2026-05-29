@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 4173);
@@ -96,7 +97,14 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "POST" && url.pathname === "/api/stripe/webhook") {
-    const body = await readJson(request);
+    const raw = await readRaw(request);
+    let body;
+    try {
+      body = verifyStripeWebhook(request, raw);
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return;
+    }
     const session = body.data?.object;
     if (body.type !== "checkout.session.completed" || !session) {
       sendJson(response, 200, { received: true, ignored: true });
@@ -444,6 +452,56 @@ function readJson(request) {
   });
 }
 
+function readRaw(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      chunks.push(chunk);
+      size += chunk.length;
+      if (size > 2 * 1024 * 1024) {
+        reject(new Error("Request body too large"));
+        request.destroy();
+      }
+    });
+    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("error", reject);
+  });
+}
+
+function verifyStripeWebhook(request, rawBody) {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) throw new Error("Missing STRIPE_WEBHOOK_SECRET");
+  const signature = request.headers["stripe-signature"];
+  if (!signature) throw new Error("Missing Stripe signature");
+
+  const parts = String(signature).split(",").reduce((acc, item) => {
+    const [key, value] = item.split("=");
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(value);
+    return acc;
+  }, {});
+  const timestamp = parts.t?.[0];
+  const signatures = parts.v1 || [];
+  if (!timestamp || !signatures.length) throw new Error("Invalid Stripe signature header");
+
+  const payload = `${timestamp}.${rawBody.toString("utf8")}`;
+  const expected = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  const verified = signatures.some((sig) => safeEqual(sig, expected));
+  if (!verified) throw new Error("Invalid Stripe webhook signature");
+
+  const age = Math.abs(Date.now() / 1000 - Number(timestamp));
+  if (age > 300) throw new Error("Stripe webhook signature expired");
+
+  return JSON.parse(rawBody.toString("utf8"));
+}
+
+function safeEqual(a, b) {
+  const left = Buffer.from(String(a), "hex");
+  const right = Buffer.from(String(b), "hex");
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
 function sendJson(response, status, body) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -543,10 +601,24 @@ async function saveSupabaseUser() {
 
 async function addPoints(points, metadata) {
   if (supabaseReady) await ensureSupabaseUser();
+  if (metadata.stripeSessionId && await ledgerHasStripeSession(metadata.stripeSessionId)) {
+    return;
+  }
   user.points += points;
   if (points > 0 && metadata.type === "topup") user.paid = true;
   await writeLedger({ ...metadata, points });
   await saveSupabaseUser();
+}
+
+async function ledgerHasStripeSession(stripeSessionId) {
+  if (!stripeSessionId) return false;
+  if (user.ledger.some((entry) => entry.stripeSessionId === stripeSessionId)) return true;
+  if (!supabaseReady) return false;
+  const rows = await supabaseSelect(
+    "point_ledger",
+    `stripe_session_id=eq.${encodeURIComponent(stripeSessionId)}`
+  );
+  return rows.length > 0;
 }
 
 async function writeLedger(entry) {
@@ -557,6 +629,7 @@ async function writeLedger(entry) {
     type: entry.type,
     points: entry.points,
     job_id: isUuid(entry.jobId) ? entry.jobId : null,
+    stripe_session_id: entry.stripeSessionId || null,
     metadata: entry
   });
 }

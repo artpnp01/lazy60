@@ -502,9 +502,15 @@ async function handleCheckoutReturn() {
   const pack = query.get("pack");
   const found = PACKS.find(([id]) => id === pack);
   if (found) {
-    await topup(found[3]);
+    if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+      await topup(found[3]);
+      toast("Checkout success. Points added in development mode.");
+    } else {
+      const data = await apiGet("/api/me");
+      applyUser(data.user);
+      toast("Checkout success. Points will update after Stripe confirms payment.");
+    }
     await loadJobs();
-    toast("Checkout success. Points added in development mode.");
   }
   localStorage.removeItem("lazy60_checkout_email");
   window.history.replaceState({}, document.title, window.location.pathname);
