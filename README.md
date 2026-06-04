@@ -37,8 +37,19 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+KEEPALIVE_SECRET=
 ADMIN_EMAILS=hi@lazy60.com
 ```
+
+## Keepalive
+
+The app includes a protected keepalive endpoint for lightweight health checks:
+
+```text
+GET /api/keepalive?key=YOUR_KEEPALIVE_SECRET
+```
+
+It pings the app and performs a tiny Supabase query. Set the same `KEEPALIVE_SECRET` in Render and GitHub Actions secrets, then the workflow in `.github/workflows/keepalive.yml` will run once per day.
 
 ## Demo Test Hooks
 
@@ -257,6 +268,7 @@ KIE_API_KEY=
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+KEEPALIVE_SECRET=
 STRIPE_SECRET_KEY=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 STRIPE_WEBHOOK_SECRET=

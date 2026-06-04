@@ -63,6 +63,24 @@ async function handleApi(request, response, url) {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/keepalive") {
+    const expected = process.env.KEEPALIVE_SECRET || "";
+    const provided = url.searchParams.get("key") || request.headers["x-keepalive-key"] || "";
+    if (!expected || provided !== expected) {
+      sendJson(response, 404, { error: "Not found" });
+      return;
+    }
+    if (supabaseReady) {
+      await supabaseSelect("profiles", "limit=1");
+    }
+    sendJson(response, 200, {
+      ok: true,
+      supabase: supabaseReady,
+      checkedAt: new Date().toISOString()
+    });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/api/me") {
     if (supabaseReady) await ensureSupabaseUser();
     sendJson(response, 200, { user: publicUser() });
