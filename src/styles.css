@@ -486,6 +486,9 @@ button:hover {
   height: 72px;
   border-radius: 50%;
   background: #cdd3dc;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  object-position: center;
   display: flex;
   align-items: center;
   justify-content: center;

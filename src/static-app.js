@@ -102,7 +102,7 @@ function appHtml() {
   return `<main class="shell">
     <aside class="founder">
       <h2>Founder Service</h2>
-      <div class="avatar">Maker</div>
+      <img class="avatar" src="https://i.imgur.com/Qjg7Ikk.png" alt="Maker" />
       <p>AI did not nail it? Let the founder design for you directly.</p>
       <ul><li>Image detail edits</li><li>Ad layouts and social covers</li><li>Portfolio-backed ecommerce design</li></ul>
       <div class="contact-row"><button><span class="icon whatsapp-icon"></span>WhatsApp</button><button><span class="icon messenger-icon"></span>Messenger</button></div>
