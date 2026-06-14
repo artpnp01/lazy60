@@ -12,11 +12,13 @@ const defaultUser = {
   email: "hi@lazy60.com",
   points: 0,
   paid: false,
+  isAdmin: false,
   freeUsedDate: "",
   ledger: []
 };
 let user = { ...defaultUser };
 let supabaseReady = false;
+let portfolioMemory = defaultPortfolio();
 
 loadEnv();
 supabaseReady = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -40,7 +42,7 @@ http.createServer(async (request, response) => {
     serveStatic(url.pathname, response);
   } catch (error) {
     console.error("Request failed:", request.method, request.url, error.stack || error.message);
-    sendJson(response, 500, { error: error.message || "Server error" });
+    sendJson(response, error.status || 500, { error: error.message || "Server error" });
   }
 }).listen(port, host, () => {
   console.log(`LAZY60 preview: http://${host}:${port}`);
@@ -208,6 +210,39 @@ async function handleApi(request, response, url) {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/portfolio") {
+    sendJson(response, 200, { portfolio: await loadPortfolio() });
+    return;
+  }
+
+  if (request.method === "PATCH" && url.pathname === "/api/portfolio/profile") {
+    await requireAdmin();
+    const body = await readJson(request);
+    sendJson(response, 200, { portfolio: await savePortfolioProfile(body) });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/portfolio/cases") {
+    await requireAdmin();
+    const body = await readJson(request);
+    sendJson(response, 200, { portfolio: await createPortfolioCase(body) });
+    return;
+  }
+
+  const portfolioCaseMatch = url.pathname.match(/^\/api\/portfolio\/cases\/([^/]+)$/);
+  if (portfolioCaseMatch && request.method === "PATCH") {
+    await requireAdmin();
+    const body = await readJson(request);
+    sendJson(response, 200, { portfolio: await updatePortfolioCase(portfolioCaseMatch[1], body) });
+    return;
+  }
+
+  if (portfolioCaseMatch && request.method === "DELETE") {
+    await requireAdmin();
+    sendJson(response, 200, { portfolio: await deletePortfolioCase(portfolioCaseMatch[1]) });
+    return;
+  }
+
   sendJson(response, 404, { error: "API route not found" });
 }
 
@@ -220,6 +255,7 @@ function setRequestUser(request) {
 function serveStatic(pathname, response) {
   let cleanPath = decodeURIComponent(pathname);
   if (cleanPath === "/") cleanPath = "/index.html";
+  if (cleanPath === "/portfolio") cleanPath = "/index.html";
 
   const file = path.join(root, cleanPath);
   if (!file.startsWith(root)) {
@@ -536,6 +572,7 @@ function publicUser() {
     email: user.email,
     points: user.points,
     paid: user.paid,
+    isAdmin: isAdminUser(user.email),
     freeAvailable: !user.paid && user.freeUsedDate !== todayKey(),
     nextFreeRefresh: nextRefreshIso()
   };
@@ -615,6 +652,7 @@ function applyProfile(profile) {
   user.email = profile.email;
   user.points = profile.points || 0;
   user.paid = Boolean(profile.paid);
+  user.isAdmin = Boolean(profile.is_admin);
   user.freeUsedDate = profile.free_used_date || "";
 }
 
@@ -736,6 +774,188 @@ function supabaseJobRow(job) {
   };
 }
 
+function defaultPortfolio() {
+  return {
+    profile: {
+      name: "Cayman",
+      bio: "AI did not nail it? Let the founder design for you directly. Custom premium boutique layouts.",
+      avatarUrl: "https://i.imgur.com/Qjg7Ikk.png",
+      whatsappUrl: "https://wa.me/8613825136068",
+      messengerUrl: "https://www.messenger.com/t/hiro.yuki.7106",
+      email: "hi@lazy60.com"
+    },
+    cases: [
+      {
+        id: "case_coffee",
+        title: "Premium Ceramic Cup",
+        description: "Hard studio lighting with crisp shadows.",
+        beforeImage: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80",
+        afterImage: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80",
+        sortOrder: 1
+      },
+      {
+        id: "case_sofa",
+        title: "Nordic Studio Sofa",
+        description: "Clean perspective layout",
+        beforeImage: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1200&q=80",
+        afterImage: "https://images.unsplash.com/photo-1540574163026-643ea20ade25?auto=format&fit=crop&w=1200&q=80",
+        sortOrder: 2
+      }
+    ]
+  };
+}
+
+async function loadPortfolio() {
+  if (!supabaseReady) return portfolioMemory;
+  try {
+    const profileRows = await supabaseSelect("portfolio_profile", "id=eq.main");
+    const caseRows = await supabaseSelect("portfolio_cases", "active=eq.true&order=sort_order.asc,created_at.desc");
+    const fallback = defaultPortfolio();
+    return {
+      profile: profileRows[0] ? portfolioProfileFromRow(profileRows[0]) : fallback.profile,
+      cases: caseRows.length ? caseRows.map(portfolioCaseFromRow) : fallback.cases
+    };
+  } catch (error) {
+    console.warn("Portfolio fallback:", error.message);
+    return portfolioMemory;
+  }
+}
+
+async function savePortfolioProfile(body) {
+  const next = {
+    ...portfolioMemory.profile,
+    name: cleanText(body.name, 80) || portfolioMemory.profile.name,
+    bio: cleanText(body.bio, 500),
+    avatarUrl: cleanText(body.avatarUrl, 2000) || portfolioMemory.profile.avatarUrl,
+    whatsappUrl: cleanText(body.whatsappUrl, 500),
+    messengerUrl: cleanText(body.messengerUrl, 500),
+    email: cleanText(body.email, 160)
+  };
+  portfolioMemory.profile = next;
+
+  if (supabaseReady) {
+    await supabaseUpsert("portfolio_profile", {
+      id: "main",
+      name: next.name,
+      bio: next.bio,
+      avatar_url: next.avatarUrl,
+      whatsapp_url: next.whatsappUrl,
+      messenger_url: next.messengerUrl,
+      email: next.email,
+      updated_at: new Date().toISOString()
+    }, "id");
+  }
+  return loadPortfolio();
+}
+
+async function createPortfolioCase(body) {
+  const item = normalizePortfolioCase({
+    id: `case_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    title: body.title,
+    description: body.description,
+    beforeImage: body.beforeImage,
+    afterImage: body.afterImage,
+    sortOrder: portfolioMemory.cases.length + 1
+  });
+  portfolioMemory.cases.unshift(item);
+
+  if (supabaseReady) {
+    await supabaseInsert("portfolio_cases", portfolioCaseRow(item));
+  }
+  return loadPortfolio();
+}
+
+async function updatePortfolioCase(id, body) {
+  const existing = portfolioMemory.cases.find((item) => item.id === id) || {};
+  const next = normalizePortfolioCase({ ...existing, ...body, id });
+  portfolioMemory.cases = portfolioMemory.cases.map((item) => (item.id === id ? next : item));
+
+  if (supabaseReady) {
+    await supabasePatch("portfolio_cases", `id=eq.${encodeURIComponent(id)}`, {
+      ...portfolioCaseRow(next),
+      updated_at: new Date().toISOString()
+    });
+  }
+  return loadPortfolio();
+}
+
+async function deletePortfolioCase(id) {
+  portfolioMemory.cases = portfolioMemory.cases.filter((item) => item.id !== id);
+  if (supabaseReady) {
+    await supabasePatch("portfolio_cases", `id=eq.${encodeURIComponent(id)}`, {
+      active: false,
+      updated_at: new Date().toISOString()
+    });
+  }
+  return loadPortfolio();
+}
+
+function normalizePortfolioCase(item) {
+  return {
+    id: cleanText(item.id, 80),
+    title: cleanText(item.title, 120) || "Untitled Work",
+    description: cleanText(item.description, 300),
+    beforeImage: cleanText(item.beforeImage, 4000000),
+    afterImage: cleanText(item.afterImage, 4000000),
+    sortOrder: Number(item.sortOrder || 0)
+  };
+}
+
+function portfolioProfileFromRow(row) {
+  return {
+    name: row.name || "",
+    bio: row.bio || "",
+    avatarUrl: row.avatar_url || "",
+    whatsappUrl: row.whatsapp_url || "",
+    messengerUrl: row.messenger_url || "",
+    email: row.email || ""
+  };
+}
+
+function portfolioCaseFromRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description || "",
+    beforeImage: row.before_image_url || "",
+    afterImage: row.after_image_url || "",
+    sortOrder: row.sort_order || 0
+  };
+}
+
+function portfolioCaseRow(item) {
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    before_image_url: item.beforeImage,
+    after_image_url: item.afterImage,
+    sort_order: item.sortOrder,
+    active: true
+  };
+}
+
+async function requireAdmin() {
+  if (supabaseReady) await ensureSupabaseUser();
+  if (!isAdminUser(user.email) && !user.isAdmin) {
+    const error = new Error("Admin access required");
+    error.status = 403;
+    throw error;
+  }
+}
+
+function isAdminUser(email) {
+  const admins = String(process.env.ADMIN_EMAILS || "hi@lazy60.com")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  return admins.includes(String(email || "").trim().toLowerCase());
+}
+
+function cleanText(value, maxLength) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
 async function supabaseSelect(table, query) {
   return supabaseRequest(`/rest/v1/${table}?${query}&select=*`, { method: "GET" });
 }
@@ -744,6 +964,14 @@ async function supabaseInsert(table, row) {
   return supabaseRequest(`/rest/v1/${table}`, {
     method: "POST",
     headers: { "Prefer": "return=representation" },
+    body: row
+  });
+}
+
+async function supabaseUpsert(table, row, conflictTarget) {
+  return supabaseRequest(`/rest/v1/${table}?on_conflict=${encodeURIComponent(conflictTarget)}`, {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
     body: row
   });
 }

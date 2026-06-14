@@ -42,7 +42,23 @@ const state = {
   stripeEnabled: false,
   points: 0,
   paid: false,
+  isAdmin: false,
   freeAvailable: true,
+  portfolio: {
+    profile: {
+      name: "Cayman",
+      bio: "AI did not nail it? Let the founder design for you directly. Custom premium boutique layouts.",
+      avatarUrl: "https://i.imgur.com/Qjg7Ikk.png",
+      whatsappUrl: "https://wa.me/8613825136068",
+      messengerUrl: "https://www.messenger.com/t/hiro.yuki.7106",
+      email: "hi@lazy60.com"
+    },
+    cases: []
+  },
+  portfolioDraft: null,
+  portfolioView: null,
+  portfolioLoaded: false,
+  portfolioImageField: "",
   uploads: [],
   productName: "",
   language: "English",
@@ -59,6 +75,7 @@ const state = {
 
 const demoEmail = new URLSearchParams(window.location.search).get("email");
 if (demoEmail) state.email = demoEmail.trim().toLowerCase();
+if (window.location.pathname === "/portfolio") state.route = "portfolio";
 
 function image(kind = "generated") {
   const palettes = {
@@ -78,16 +95,19 @@ function render() {
       <button class="brand" data-action="route" data-route="app">LAZY60</button>
       <nav class="topnav">
         <button class="${state.route === "app" ? "active-link" : ""}" data-action="route" data-route="app">Generator</button>
+        <button class="${state.route === "portfolio" ? "active-link" : ""}" data-action="route" data-route="portfolio">Portfolio</button>
         <button class="${state.route === "admin" ? "active-link" : ""}" data-action="route" data-route="admin">Admin</button>
       </nav>
       <div class="auth">${authHtml()}</div>
     </header>
-    ${state.route === "app" ? appHtml() : adminHtml()}
+    ${state.route === "app" ? appHtml() : state.route === "portfolio" ? portfolioHtml() : adminHtml()}
     ${modalHtml()}
     <input id="file-picker" type="file" accept="image/*" multiple hidden />
+    <input id="portfolio-file-picker" type="file" accept="image/*" hidden />
   `;
   bind();
   checkApiOnce();
+  if (state.route === "portfolio" && !state.portfolioLoaded) loadPortfolio();
 }
 
 function authHtml() {
@@ -105,8 +125,8 @@ function appHtml() {
       <img class="avatar" src="https://i.imgur.com/Qjg7Ikk.png" alt="Maker" />
       <p>AI did not nail it? Let the founder design for you directly.</p>
       <ul><li>Image detail edits</li><li>Ad layouts and social covers</li><li>Portfolio-backed ecommerce design</li></ul>
-      <div class="contact-row"><button><span class="icon whatsapp-icon"></span>WhatsApp</button><button><span class="icon messenger-icon"></span>Messenger</button></div>
-      <button class="portfolio">[ View My Portfolio -> ]</button>
+      <div class="contact-row"><a class="contact-button" href="${state.portfolio.profile.whatsappUrl}" target="_blank" rel="noopener"><span class="icon whatsapp-icon"></span>WhatsApp</a><a class="contact-button" href="${state.portfolio.profile.messengerUrl}" target="_blank" rel="noopener"><span class="icon messenger-icon"></span>Messenger</a></div>
+      <button class="portfolio" data-action="route" data-route="portfolio">[ View My Portfolio -> ]</button>
       <a class="email" href="mailto:hi@lazy60.com">hi@lazy60.com</a>
       <span class="copyright">&copy; LAZY60 STUDIO</span>
     </aside>
@@ -155,6 +175,48 @@ function cardHtml(item) {
   if (item.status === "processing") return `<article class="result-card"><div class="processing"><strong>Generating...</strong><div class="bar"><span style="width:${item.progress}%"></span></div></div><p>${esc(item.productName)} &middot; ${item.type}</p></article>`;
   if (item.status === "failed") return `<article class="result-card"><div class="failed"><strong>Task failed</strong><p>${item.failureReason}</p><button data-action="refund" data-id="${item.id}">Refund points</button></div><p>${esc(item.productName)} &middot; ${item.type}</p></article>`;
   return `<article class="result-card"><button class="image-button" data-action="open" data-id="${item.id}"><img src="${item.image}" alt="" /></button><p>${esc(item.title || item.productName)} &middot; ${item.type}</p></article>`;
+}
+
+function portfolioHtml() {
+  const profile = state.portfolio.profile;
+  const cases = state.portfolio.cases;
+  return `<main class="portfolio-page">
+    <section class="portfolio-hero">
+      <div class="portfolio-identity">
+        <img class="portfolio-avatar" src="${esc(profile.avatarUrl)}" alt="Maker" />
+        <div>
+          <h1>${esc(profile.name)}</h1>
+          <p class="portfolio-bio" data-action="${state.isAdmin ? "edit-profile" : ""}">${esc(profile.bio)}</p>
+          <div class="portfolio-links">
+            <a class="contact-button" href="${esc(profile.whatsappUrl)}" target="_blank" rel="noopener"><span class="icon whatsapp-icon"></span>WhatsApp</a>
+            <a class="contact-button" href="${esc(profile.messengerUrl)}" target="_blank" rel="noopener"><span class="icon messenger-icon"></span>Messenger</a>
+            <a class="email" href="mailto:${esc(profile.email)}">${esc(profile.email)}</a>
+            ${state.isAdmin ? `<span class="admin-hint">[ Admin: double click bio to edit ]</span>` : ""}
+          </div>
+        </div>
+      </div>
+      ${state.isAdmin ? `<button class="black add-work" data-action="add-work">+ Add New Work</button>` : ""}
+    </section>
+    <section class="portfolio-grid">
+      ${cases.length ? cases.map(portfolioCardHtml).join("") : `<div class="empty">Portfolio works will appear here.</div>`}
+    </section>
+  </main>`;
+}
+
+function portfolioCardHtml(item) {
+  return `<article class="work-card">
+    <button class="work-image" data-action="view-work" data-id="${esc(item.id)}">
+      <img src="${esc(item.afterImage)}" alt="${esc(item.title)}" />
+      ${item.beforeImage ? `<img class="work-thumb" src="${esc(item.beforeImage)}" alt="" />` : ""}
+    </button>
+    <div class="work-meta">
+      <div>
+        <h2>${esc(item.title)}</h2>
+        <p>${esc(item.description)}</p>
+      </div>
+      ${state.isAdmin ? `<button class="link" data-action="edit-work" data-id="${esc(item.id)}">[ Edit ]</button>` : ""}
+    </div>
+  </article>`;
 }
 
 function adminHtml() {
@@ -208,7 +270,69 @@ function modalHtml() {
     const j = state.selected;
     return `<div class="overlay"><div class="modal snapshot"><section class="preview"><img src="${j.image}" alt="" /></section><aside class="snapshot-info"><button class="close" data-action="close">[ X ]</button><h2>Design Snapshot</h2><div class="meta"><img src="${j.source || image("before")}" alt="" /><span>${j.type}</span><span>${j.resolution || "1024x1024"}</span></div><div class="prompt-read"><strong>Design Prompt:</strong><p>${esc(j.prompt)}</p></div><button class="soon" data-action="waitlist">[ Keep Style & Generate Series ]<small>[ coming soon ]</small></button><div class="action-row"><button class="black">[ Download ]</button><button data-action="compare">[ Compare ]</button></div></aside></div></div>${state.compareOpen ? compareHtml() : ""}${state.waitlistOpen ? waitlistHtml() : ""}`;
   }
+  if (state.modal === "profile-edit") return profileEditModal();
+  if (state.modal === "work-add") return workEditModal("Add New Work", "create-work");
+  if (state.modal === "work-edit") return workEditModal(`Edit Case ID: ${state.portfolioDraft?.id || ""}`, "save-work");
+  if (state.modal === "work-view" && state.portfolioView) return workViewModal(state.portfolioView);
   return "";
+}
+
+function profileEditModal() {
+  const p = state.portfolioDraft || state.portfolio.profile;
+  return `<div class="overlay"><div class="modal profile-editor">
+    <button class="close" data-action="close">[ X ]</button>
+    <h2>[ Edit Profile Data ]</h2>
+    <label>Name / Role:<input id="portfolio-name" value="${esc(p.name)}" /></label>
+    <label>Bio Description:<textarea id="portfolio-bio">${esc(p.bio)}</textarea></label>
+    <label>Avatar URL:<input id="portfolio-avatar-url" value="${esc(p.avatarUrl)}" /></label>
+    <label>WhatsApp Link:<input id="portfolio-whatsapp" value="${esc(p.whatsappUrl)}" /></label>
+    <label>Messenger Link:<input id="portfolio-messenger" value="${esc(p.messengerUrl)}" /></label>
+    <label>Email Text:<input id="portfolio-email" value="${esc(p.email)}" /></label>
+    <div class="action-row"><button class="black" data-action="save-profile">Save Changes</button><button data-action="close">Cancel</button></div>
+  </div></div>`;
+}
+
+function workEditModal(titleText, saveAction) {
+  const draft = state.portfolioDraft || emptyWorkDraft();
+  return `<div class="overlay"><div class="modal work-editor">
+    <button class="close" data-action="close">[ X ]</button>
+    <h2>[ ${esc(titleText)} ]</h2>
+    <div class="work-form-grid">
+      <label>Case Title:<input id="work-title" value="${esc(draft.title)}" placeholder="e.g. Premium Mug" /></label>
+      <label>Description / Vibe:<input id="work-description" value="${esc(draft.description)}" placeholder="e.g. Studio shadows" /></label>
+    </div>
+    <div class="work-form-grid">
+      ${workUploadBox("Before Image (Raw)", "beforeImage", draft.beforeImage)}
+      ${workUploadBox("After Image (Studio)", "afterImage", draft.afterImage)}
+    </div>
+    <div class="action-row">
+      <button class="black" data-action="${saveAction}">Save To Archive</button>
+      ${saveAction === "save-work" ? `<button class="danger" data-action="delete-work">Delete</button>` : ""}
+      <button data-action="close">Cancel</button>
+    </div>
+  </div></div>`;
+}
+
+function workUploadBox(label, field, value) {
+  return `<label>${label}:<button class="portfolio-upload ${value ? "has-image" : ""}" data-action="pick-work-image" data-field="${field}" type="button">
+    ${value ? `<img src="${esc(value)}" alt="" /><span>[ Remove / Change ]</span>` : `<span class="upload-mark">+</span><span>Click To Upload</span>`}
+  </button></label>`;
+}
+
+function workViewModal(item) {
+  return `<div class="overlay"><div class="modal work-viewer">
+    <button class="close" data-action="close">[ Close ]</button>
+    <h2>${esc(item.title)}</h2>
+    <p>${esc(item.description)}</p>
+    <div class="before-after-grid">
+      <figure><figcaption>Before (Raw)</figcaption><img src="${esc(item.beforeImage || item.afterImage)}" alt="" /></figure>
+      <figure><figcaption>After (Studio)</figcaption><img src="${esc(item.afterImage)}" alt="" /></figure>
+    </div>
+  </div></div>`;
+}
+
+function emptyWorkDraft() {
+  return { id: "", title: "", description: "", beforeImage: "", afterImage: "" };
 }
 
 function compareHtml() {
@@ -221,6 +345,7 @@ function waitlistHtml() {
 
 function bind() {
   document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handle));
+  document.querySelectorAll('[data-action="edit-profile"]').forEach((el) => el.addEventListener("dblclick", handle));
   const product = document.getElementById("product");
   if (product) product.addEventListener("input", (e) => (state.productName = e.target.value));
   const language = document.getElementById("language");
@@ -239,11 +364,22 @@ function bind() {
     state.uploads.push(...uploads);
     render();
   });
+  const portfolioPicker = document.getElementById("portfolio-file-picker");
+  portfolioPicker.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file || !state.portfolioImageField || !state.portfolioDraft) return;
+    state.portfolioDraft[state.portfolioImageField] = await readFileAsDataUrl(file);
+    state.portfolioImageField = "";
+    render();
+  });
 }
 
 async function handle(e) {
   const a = e.currentTarget.dataset.action;
-  if (a === "route") state.route = e.currentTarget.dataset.route;
+  if (a === "route") {
+    state.route = e.currentTarget.dataset.route;
+    window.history.pushState({}, "", state.route === "portfolio" ? "/portfolio" : "/");
+  }
   if (a === "admin-tab") state.adminTab = e.currentTarget.dataset.tab;
   if (a === "login") await login();
   if (a === "topup") state.modal = "topup";
@@ -251,6 +387,8 @@ async function handle(e) {
     state.modal = null;
     state.compareOpen = false;
     state.waitlistOpen = false;
+    state.portfolioDraft = null;
+    state.portfolioView = null;
   }
   if (a === "close-compare") state.compareOpen = false;
   if (a === "close-waitlist") state.waitlistOpen = false;
@@ -282,6 +420,30 @@ async function handle(e) {
   if (a === "compare") state.compareOpen = true;
   if (a === "waitlist") state.waitlistOpen = true;
   if (a === "refund") refund(e.currentTarget.dataset.id);
+  if (a === "edit-profile" && e.type === "dblclick" && state.isAdmin) {
+    state.portfolioDraft = { ...state.portfolio.profile };
+    state.modal = "profile-edit";
+  }
+  if (a === "add-work" && state.isAdmin) {
+    state.portfolioDraft = emptyWorkDraft();
+    state.modal = "work-add";
+  }
+  if (a === "view-work") {
+    state.portfolioView = findPortfolioCase(e.currentTarget.dataset.id);
+    state.modal = "work-view";
+  }
+  if (a === "edit-work" && state.isAdmin) {
+    state.portfolioDraft = { ...findPortfolioCase(e.currentTarget.dataset.id) };
+    state.modal = "work-edit";
+  }
+  if (a === "pick-work-image" && state.isAdmin) {
+    state.portfolioImageField = e.currentTarget.dataset.field;
+    document.getElementById("portfolio-file-picker").click();
+  }
+  if (a === "save-profile") await saveProfile();
+  if (a === "create-work") await saveWork(true);
+  if (a === "save-work") await saveWork(false);
+  if (a === "delete-work") await deleteWork();
   render();
 }
 
@@ -439,6 +601,66 @@ async function loadJobs() {
   state.jobs = (data.jobs || []).map((job) => normalizeApiJob(job));
 }
 
+async function loadPortfolio(force = false) {
+  if (state.portfolioLoaded && !force) return;
+  try {
+    const data = await apiGet("/api/portfolio");
+    state.portfolio = data.portfolio;
+    state.portfolioLoaded = true;
+    render();
+  } catch (error) {
+    state.portfolioLoaded = true;
+    toast(`Portfolio loaded locally: ${error.message}`);
+  }
+}
+
+function findPortfolioCase(id) {
+  return state.portfolio.cases.find((item) => item.id === id) || emptyWorkDraft();
+}
+
+async function saveProfile() {
+  if (!state.isAdmin) return toast("Admin access required.");
+  const body = {
+    name: document.getElementById("portfolio-name").value,
+    bio: document.getElementById("portfolio-bio").value,
+    avatarUrl: document.getElementById("portfolio-avatar-url").value,
+    whatsappUrl: document.getElementById("portfolio-whatsapp").value,
+    messengerUrl: document.getElementById("portfolio-messenger").value,
+    email: document.getElementById("portfolio-email").value
+  };
+  const data = await apiPatch("/api/portfolio/profile", body);
+  state.portfolio = data.portfolio;
+  state.portfolioDraft = null;
+  state.modal = null;
+  toast("Profile updated.");
+}
+
+async function saveWork(isNew) {
+  if (!state.isAdmin) return toast("Admin access required.");
+  const body = {
+    ...state.portfolioDraft,
+    title: document.getElementById("work-title").value,
+    description: document.getElementById("work-description").value
+  };
+  if (!body.afterImage) return toast("Add an after image before saving.");
+  const data = isNew
+    ? await apiPost("/api/portfolio/cases", body)
+    : await apiPatch(`/api/portfolio/cases/${encodeURIComponent(body.id)}`, body);
+  state.portfolio = data.portfolio;
+  state.portfolioDraft = null;
+  state.modal = null;
+  toast(isNew ? "Work added." : "Work updated.");
+}
+
+async function deleteWork() {
+  if (!state.isAdmin || !state.portfolioDraft?.id) return;
+  const data = await apiDelete(`/api/portfolio/cases/${encodeURIComponent(state.portfolioDraft.id)}`);
+  state.portfolio = data.portfolio;
+  state.portfolioDraft = null;
+  state.modal = null;
+  toast("Work deleted.");
+}
+
 async function topup(points) {
   try {
     const data = await apiPost("/api/topup", { points, pack: `${points}_points` });
@@ -472,6 +694,7 @@ function applyUser(user) {
   if (!user) return;
   state.points = user.points;
   state.paid = user.paid;
+  state.isAdmin = Boolean(user.isAdmin);
   state.freeAvailable = user.freeAvailable;
   state.loggedIn = true;
   state.authLoading = false;
@@ -652,6 +875,27 @@ async function apiPost(path, body) {
     method: "POST",
     headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed ${response.status}`);
+  return data;
+}
+
+async function apiPatch(path, body) {
+  const response = await fetch(path, {
+    method: "PATCH",
+    headers: apiHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed ${response.status}`);
+  return data;
+}
+
+async function apiDelete(path) {
+  const response = await fetch(path, {
+    method: "DELETE",
+    headers: apiHeaders()
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed ${response.status}`);

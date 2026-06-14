@@ -77,6 +77,62 @@ create table if not exists waitlist (
   created_at timestamptz not null default now()
 );
 
+create table if not exists portfolio_profile (
+  id text primary key default 'main',
+  name text not null,
+  bio text not null default '',
+  avatar_url text,
+  whatsapp_url text,
+  messenger_url text,
+  email text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists portfolio_cases (
+  id text primary key,
+  title text not null,
+  description text not null default '',
+  before_image_url text,
+  after_image_url text not null,
+  sort_order integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 insert into profiles (email, display_name, points, paid)
 values ('hi@lazy60.com', 'LAZY60 Demo', 0, false)
 on conflict (email) do nothing;
+
+insert into portfolio_profile (id, name, bio, avatar_url, whatsapp_url, messenger_url, email)
+values (
+  'main',
+  'Cayman',
+  'AI did not nail it? Let the founder design for you directly. Custom premium boutique layouts.',
+  'https://i.imgur.com/Qjg7Ikk.png',
+  'https://wa.me/8613825136068',
+  'https://www.messenger.com/t/hiro.yuki.7106',
+  'hi@lazy60.com'
+)
+on conflict (id) do nothing;
+
+insert into portfolio_cases (id, title, description, before_image_url, after_image_url, sort_order)
+values
+  (
+    'case_coffee',
+    'Premium Ceramic Cup',
+    'Hard studio lighting with crisp shadows.',
+    'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80',
+    1
+  ),
+  (
+    'case_sofa',
+    'Nordic Studio Sofa',
+    'Clean perspective layout',
+    'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1540574163026-643ea20ade25?auto=format&fit=crop&w=1200&q=80',
+    2
+  )
+on conflict (id) do nothing;

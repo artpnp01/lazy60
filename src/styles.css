@@ -13,6 +13,271 @@
   background: var(--bg);
 }
 
+.portfolio-page {
+  min-height: calc(100vh - 56px);
+  padding: 44px 56px 70px;
+  background: var(--bg);
+}
+
+.portfolio-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+  align-items: flex-start;
+  margin-bottom: 54px;
+}
+
+.portfolio-identity {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 760px);
+  gap: 22px;
+  align-items: start;
+}
+
+.portfolio-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  background: #111;
+}
+
+.portfolio-identity h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.portfolio-bio {
+  max-width: 780px;
+  margin: 0 0 20px;
+  color: #586174;
+  line-height: 1.55;
+}
+
+.portfolio-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.contact-button {
+  min-height: 34px;
+  padding: 0 18px;
+  border: 1px solid var(--ink);
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+
+.admin-hint {
+  color: #008a62;
+  border: 1px solid #9ee7ce;
+  background: #effff9;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.add-work {
+  min-width: 190px;
+}
+
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 560px));
+  gap: 42px 34px;
+  align-items: start;
+}
+
+.work-card {
+  min-width: 0;
+}
+
+.work-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+
+.work-image img:first-child {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.work-thumb {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  width: 76px !important;
+  height: 56px !important;
+  border: 2px solid var(--panel);
+  object-fit: cover;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+}
+
+.work-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: start;
+  padding: 14px 4px 0;
+}
+
+.work-meta h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.work-meta p {
+  margin: 0;
+  color: #697184;
+}
+
+.profile-editor,
+.work-editor {
+  width: min(720px, calc(100vw - 48px));
+  padding: 30px 36px 36px;
+}
+
+.profile-editor h2,
+.work-editor h2,
+.work-viewer h2 {
+  margin: 0 0 24px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
+  font-size: 18px;
+}
+
+.profile-editor label,
+.work-editor label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-editor textarea {
+  min-height: 96px;
+}
+
+.work-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.portfolio-upload {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px dashed var(--line);
+  background: var(--panel);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+}
+
+.portfolio-upload.has-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portfolio-upload.has-image span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, .58);
+  color: #fff;
+}
+
+.upload-mark {
+  font-size: 28px;
+}
+
+.work-viewer {
+  width: min(1160px, calc(100vw - 72px));
+  padding: 34px 36px 36px;
+}
+
+.work-viewer p {
+  color: #596276;
+  margin: -10px 0 28px;
+}
+
+.before-after-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.before-after-grid figure {
+  margin: 0;
+  border: 1px solid var(--line);
+  background: #ececea;
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.before-after-grid figcaption {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  background: #000;
+  color: #fff;
+  padding: 8px 12px;
+  text-transform: uppercase;
+}
+
+.before-after-grid img {
+  max-width: 82%;
+  max-height: 520px;
+  object-fit: contain;
+}
+
+@media (max-width: 900px) {
+  body {
+    min-width: 0;
+  }
+
+  .portfolio-page {
+    padding: 28px 18px 48px;
+  }
+
+  .portfolio-hero,
+  .portfolio-identity,
+  .portfolio-grid,
+  .work-form-grid,
+  .before-after-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-hero {
+    display: grid;
+  }
+}
+
 /* Compact desktop pass for 1280x720 demos. */
 :root {
   --bg: #f5f4f0;
