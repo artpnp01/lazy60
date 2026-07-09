@@ -20,19 +20,20 @@ const PACKS = [
 
 const bootstrapToken = localStorage.getItem("lazy60_access_token") || "";
 const bootstrapEmail = localStorage.getItem("lazy60_user_email") || localStorage.getItem("lazy60_checkout_email") || "hi@lazy60.com";
+const bootstrapUser = readCachedUser();
 const bootstrapQuery = new URLSearchParams(window.location.search);
 const bootstrapHash = new URLSearchParams(window.location.hash.slice(1));
 const needsAuthRestore = Boolean(
-  bootstrapToken ||
   bootstrapQuery.get("code") ||
   bootstrapHash.get("access_token") ||
-  bootstrapQuery.get("checkout") === "success"
+  bootstrapQuery.get("checkout") === "success" ||
+  (bootstrapToken && !bootstrapUser)
 );
 
 const state = {
   route: "app",
   adminTab: "Design Types",
-  loggedIn: false,
+  loggedIn: Boolean(bootstrapToken && bootstrapUser),
   authLoading: needsAuthRestore,
   paymentSyncing: false,
   email: bootstrapEmail,
@@ -40,10 +41,10 @@ const state = {
   supabaseUrl: "",
   supabaseAnonKey: "",
   stripeEnabled: false,
-  points: 0,
-  paid: false,
-  isAdmin: false,
-  freeAvailable: true,
+  points: bootstrapUser?.points || 0,
+  paid: Boolean(bootstrapUser?.paid),
+  isAdmin: Boolean(bootstrapUser?.isAdmin),
+  freeAvailable: bootstrapUser?.freeAvailable ?? true,
   portfolio: {
     profile: {
       name: "Cayman",
@@ -288,7 +289,7 @@ function profileEditModal() {
     <label>WhatsApp Link:<input id="portfolio-whatsapp" value="${esc(p.whatsappUrl)}" /></label>
     <label>Messenger Link:<input id="portfolio-messenger" value="${esc(p.messengerUrl)}" /></label>
     <label>Email Text:<input id="portfolio-email" value="${esc(p.email)}" /></label>
-    <div class="action-row"><button class="black" data-action="save-profile">Save Changes</button><button data-action="close">Cancel</button></div>
+    <div class="form-actions"><button class="black" data-action="save-profile">Save Changes</button><button data-action="close">Cancel</button></div>
   </div></div>`;
 }
 
@@ -305,10 +306,10 @@ function workEditModal(titleText, saveAction) {
       ${workUploadBox("Before Image (Raw)", "beforeImage", draft.beforeImage)}
       ${workUploadBox("After Image (Studio)", "afterImage", draft.afterImage)}
     </div>
-    <div class="action-row">
+    <div class="form-actions work-actions">
       <button class="black" data-action="${saveAction}">Save To Archive</button>
-      ${saveAction === "save-work" ? `<button class="danger" data-action="delete-work">Delete</button>` : ""}
       <button data-action="close">Cancel</button>
+      ${saveAction === "save-work" ? `<button class="danger" data-action="delete-work">Delete</button>` : ""}
     </div>
   </div></div>`;
 }
@@ -702,6 +703,14 @@ function applyUser(user) {
   state.freeAvailable = user.freeAvailable;
   state.loggedIn = true;
   state.authLoading = false;
+  localStorage.setItem("lazy60_cached_user", JSON.stringify({
+    email: state.email,
+    points: state.points,
+    paid: state.paid,
+    isAdmin: state.isAdmin,
+    freeAvailable: state.freeAvailable,
+    savedAt: Date.now()
+  }));
 }
 
 setInterval(() => {
@@ -846,6 +855,7 @@ async function loadSupabaseUser(token) {
   if (!response.ok || !data.email) {
     localStorage.removeItem("lazy60_access_token");
     localStorage.removeItem("lazy60_user_email");
+    localStorage.removeItem("lazy60_cached_user");
     state.authToken = "";
     state.loggedIn = false;
     state.authLoading = false;
@@ -861,6 +871,18 @@ async function loadSupabaseUser(token) {
   applyUser(me.user);
   await loadJobs();
   render();
+}
+
+function readCachedUser() {
+  try {
+    const raw = localStorage.getItem("lazy60_cached_user");
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (!cached || cached.email !== bootstrapEmail) return null;
+    return cached;
+  } catch {
+    return null;
+  }
 }
 
 function wait(ms) {

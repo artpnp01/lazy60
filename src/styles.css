@@ -94,31 +94,31 @@
 }
 
 .portfolio-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 560px));
-  gap: 42px 34px;
-  align-items: start;
+  column-count: 2;
+  column-gap: 34px;
 }
 
 .work-card {
   min-width: 0;
+  break-inside: avoid;
+  margin: 0 0 42px;
 }
 
 .work-image {
   width: 100%;
-  aspect-ratio: 4 / 3;
   border: 0;
   background: transparent;
   padding: 0;
   position: relative;
   display: block;
-  overflow: hidden;
+  overflow: visible;
+  line-height: 0;
 }
 
 .work-image img:first-child {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
   display: block;
 }
 
@@ -126,11 +126,15 @@
   position: absolute;
   left: 20px;
   bottom: 20px;
-  width: 76px !important;
-  height: 56px !important;
+  width: 82px !important;
+  height: auto !important;
+  max-height: 76px;
   border: 2px solid var(--panel);
-  object-fit: cover;
+  object-fit: contain;
+  background: var(--panel);
   box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  transform: rotate(-10deg);
+  transform-origin: center;
 }
 
 .work-meta {
@@ -187,7 +191,7 @@
 
 .portfolio-upload {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  min-height: 250px;
   border: 1px dashed var(--line);
   background: var(--panel);
   display: grid;
@@ -200,8 +204,8 @@
 
 .portfolio-upload.has-image img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  max-height: 360px;
+  object-fit: contain;
 }
 
 .portfolio-upload.has-image span {
@@ -270,10 +274,13 @@
 
   .portfolio-hero,
   .portfolio-identity,
-  .portfolio-grid,
   .work-form-grid,
   .before-after-grid {
     grid-template-columns: 1fr;
+  }
+
+  .portfolio-grid {
+    column-count: 1;
   }
 
   .portfolio-hero {
@@ -458,18 +465,19 @@ select {
 }
 
 .prompt-box {
-  padding-bottom: 28px;
+  padding-bottom: 34px;
 }
 
 textarea {
   min-height: 128px;
   line-height: 1.45;
   font-size: 12px;
+  padding-bottom: 52px;
 }
 
 .autofill {
-  left: 12px;
-  bottom: 40px;
+  left: 16px;
+  bottom: 46px;
   min-height: 32px;
   padding: 0 14px;
   font-size: 12px;
@@ -980,7 +988,7 @@ select {
 .prompt-box {
   position: relative;
   border-bottom: 1px solid #e2ded6;
-  padding-bottom: 34px;
+  padding-bottom: 42px;
 }
 
 textarea {
@@ -988,12 +996,13 @@ textarea {
   resize: vertical;
   color: #34425d;
   line-height: 1.5;
+  padding-bottom: 66px;
 }
 
 .autofill {
   position: absolute;
-  left: 16px;
-  bottom: 48px;
+  left: 20px;
+  bottom: 56px;
   min-height: 40px;
   padding: 0 18px;
 }
@@ -1390,6 +1399,32 @@ textarea {
   font-weight: 900;
 }
 
+.form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.form-actions button {
+  min-height: 42px;
+  font-weight: 900;
+}
+
+.work-actions {
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+}
+
+.work-actions .danger {
+  min-width: 120px;
+  color: var(--red);
+  border: 0;
+  background: transparent;
+}
+
 .compare-modal {
   width: 1000px;
   padding: 36px;
@@ -1723,11 +1758,12 @@ td {
   textarea {
     min-height: 128px;
     font-size: 12px;
+    padding-bottom: 52px;
   }
 
   .autofill {
     min-height: 32px;
-    bottom: 40px;
+    bottom: 46px;
   }
 
   .generator-footer {
