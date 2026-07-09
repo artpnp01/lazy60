@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const root = __dirname;
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "127.0.0.1";
+const generationTimeoutMs = 5 * 60 * 1000;
 const jobs = new Map();
 const defaultUser = {
   id: "demo-user",
@@ -173,7 +174,7 @@ async function handleApi(request, response, url) {
 
   const refundMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/refund$/);
   if (request.method === "POST" && refundMatch) {
-    const job = jobs.get(refundMatch[1]);
+    const job = await getRefundableJob(refundMatch[1]);
     if (!job) {
       sendJson(response, 404, { error: "Job not found" });
       return;
@@ -189,8 +190,8 @@ async function handleApi(request, response, url) {
     if (job.cost > 0) {
       await addPoints(job.cost, { type: "refund", jobId: job.id });
     }
-    await updateJob(job.id, { status: "refunded", refunded: true });
-    sendJson(response, 200, { job: jobs.get(job.id), user: publicUser() });
+    const refundedJob = await markJobRefunded(job);
+    sendJson(response, 200, { job: refundedJob, user: publicUser() });
     return;
   }
 
@@ -208,6 +209,26 @@ async function handleApi(request, response, url) {
   if (request.method === "GET" && url.pathname === "/api/jobs") {
     const history = supabaseReady ? await listSupabaseJobs() : [...jobs.values()];
     sendJson(response, 200, { jobs: history });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/waitlist/status") {
+    const email = cleanEmail(url.searchParams.get("email") || user.email);
+    const feature = cleanText(url.searchParams.get("feature") || "style_series", 80) || "style_series";
+    sendJson(response, 200, { joined: await waitlistHasEmail(email, feature) });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/waitlist") {
+    const body = await readJson(request);
+    const email = cleanEmail(body.email || user.email);
+    const feature = cleanText(body.feature || "style_series", 80) || "style_series";
+    if (!email || !email.includes("@")) {
+      sendJson(response, 400, { error: "Valid email is required" });
+      return;
+    }
+    await joinWaitlist(email, feature, body.sourceJobId);
+    sendJson(response, 200, { joined: true });
     return;
   }
 
@@ -459,7 +480,7 @@ async function uploadImagesToKie(images) {
 
 async function pollKieTask(taskId) {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < 180000) {
+  while (Date.now() - startedAt < generationTimeoutMs) {
     await wait(3000);
     const data = await kieJson(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
       method: "GET"
@@ -469,7 +490,7 @@ async function pollKieTask(taskId) {
     if (record.state === "success") return record;
     if (record.state === "fail") throw new Error(record.failMsg || record.failCode || "KIE task failed.");
   }
-  throw new Error("KIE task timed out after 3 minutes.");
+  throw new Error("KIE task timed out after 5 minutes.");
 }
 
 async function kieJson(url, options) {
@@ -722,6 +743,31 @@ async function updateSupabaseJob(id, job) {
   });
 }
 
+async function getRefundableJob(id) {
+  const memoryJob = jobs.get(id);
+  if (memoryJob) return memoryJob;
+  if (!supabaseReady || !isUuid(id)) return null;
+  await ensureSupabaseUser();
+  const rows = await supabaseSelect(
+    "generation_jobs",
+    `id=eq.${encodeURIComponent(id)}&user_id=eq.${user.id}`
+  );
+  return rows[0] ? jobFromSupabaseRow(rows[0]) : null;
+}
+
+async function markJobRefunded(job) {
+  const next = { ...job, status: "refunded", refunded: true, updatedAt: Date.now() };
+  jobs.set(job.id, next);
+  if (supabaseReady && isUuid(job.id)) {
+    await supabasePatch("generation_jobs", `id=eq.${job.id}`, {
+      status: "refunded",
+      refunded: true,
+      updated_at: new Date().toISOString()
+    });
+  }
+  return next;
+}
+
 async function persistGeneratedImage(imageUrl, jobId) {
   if (!supabaseReady || !imageUrl) return imageUrl;
   try {
@@ -808,6 +854,25 @@ async function listSupabaseJobs() {
     `user_id=eq.${user.id}&order=created_at.desc&limit=30`
   );
   return rows.map(jobFromSupabaseRow);
+}
+
+async function waitlistHasEmail(email, feature) {
+  if (!supabaseReady || !email) return false;
+  const rows = await supabaseSelect(
+    "waitlist",
+    `email=eq.${encodeURIComponent(email)}&feature=eq.${encodeURIComponent(feature)}&limit=1`
+  );
+  return rows.length > 0;
+}
+
+async function joinWaitlist(email, feature, sourceJobId) {
+  if (!supabaseReady) return;
+  if (await waitlistHasEmail(email, feature)) return;
+  await supabaseInsert("waitlist", {
+    email,
+    feature,
+    source_job_id: isUuid(sourceJobId) ? sourceJobId : null
+  });
 }
 
 function jobFromSupabaseRow(row) {
@@ -1035,6 +1100,10 @@ function isAdminUser(email) {
 
 function cleanText(value, maxLength) {
   return String(value || "").trim().slice(0, maxLength);
+}
+
+function cleanEmail(value) {
+  return cleanText(value, 160).toLowerCase();
 }
 
 async function supabaseSelect(table, query) {

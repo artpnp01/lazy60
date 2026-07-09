@@ -77,6 +77,9 @@ create table if not exists waitlist (
   created_at timestamptz not null default now()
 );
 
+create unique index if not exists waitlist_email_feature_key
+on waitlist (lower(email), feature);
+
 create table if not exists portfolio_profile (
   id text primary key default 'main',
   name text not null,

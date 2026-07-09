@@ -12,6 +12,8 @@ const DESIGN_TYPES = [
 
 const LANGUAGES = ["English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Japanese", "Korean", "Simplified Chinese", "Traditional Chinese", "Thai", "Vietnamese", "Indonesian", "Arabic"];
 const COSTS = { "1K": 2, "2K": 3, "4K": 5 };
+const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+const WAITLIST_FEATURE = "style_series";
 const PACKS = [
   ["starter", "Starter", 9, 90, "", "45 basic 1K images"],
   ["growth", "Growth", 29, 330, "+15% Bonus", "Includes 40 bonus points"],
@@ -71,6 +73,7 @@ const state = {
   selected: null,
   compareOpen: false,
   waitlistOpen: false,
+  waitlistJoined: readWaitlistCache(bootstrapEmail),
   apiOnline: false
 };
 
@@ -128,7 +131,7 @@ function appHtml() {
       <ul><li>Image detail edits</li><li>Ad layouts and social covers</li><li>Portfolio-backed ecommerce design</li></ul>
       <div class="contact-row"><a class="contact-button" href="${state.portfolio.profile.whatsappUrl}" target="_blank" rel="noopener"><span class="icon whatsapp-icon"></span>WhatsApp</a><a class="contact-button" href="${state.portfolio.profile.messengerUrl}" target="_blank" rel="noopener"><span class="icon messenger-icon"></span>Messenger</a></div>
       <button class="portfolio" data-action="route" data-route="portfolio">[ View My Portfolio -> ]</button>
-      <a class="email" href="mailto:hi@lazy60.com">hi@lazy60.com</a>
+      <a class="email" href="mailto:${esc(state.portfolio.profile.email)}">${esc(state.portfolio.profile.email)}</a>
       <span class="copyright">&copy; LAZY60 STUDIO</span>
     </aside>
     <section class="workspace">
@@ -269,7 +272,7 @@ function modalHtml() {
   }
   if (state.modal === "snapshot" && state.selected) {
     const j = state.selected;
-    return `<div class="overlay"><div class="modal snapshot"><section class="preview"><img src="${j.image}" alt="" /></section><aside class="snapshot-info"><button class="close" data-action="close">[ X ]</button><h2>Design Snapshot</h2><div class="meta"><img src="${j.source || image("before")}" alt="" /><span>${j.type}</span><span>${j.resolution || "1024x1024"}</span></div><div class="prompt-read"><strong>Design Prompt:</strong><p>${esc(j.prompt)}</p></div><button class="soon" data-action="waitlist">[ Keep Style & Generate Series ]<small>[ coming soon ]</small></button><div class="action-row"><button class="black">[ Download ]</button><button data-action="compare">[ Compare ]</button></div></aside></div></div>${state.compareOpen ? compareHtml() : ""}${state.waitlistOpen ? waitlistHtml() : ""}`;
+    return `<div class="overlay"><div class="modal snapshot"><section class="preview"><img src="${j.image}" alt="" /></section><aside class="snapshot-info"><button class="close" data-action="close">[ X ]</button><div class="meta"><img src="${j.source || image("before")}" alt="" /><span>${j.type}</span><span>${j.resolution || "1024x1024"}</span></div><div class="prompt-read"><strong>Design Prompt:</strong><p>${esc(j.prompt)}</p></div>${state.waitlistJoined ? "" : `<button class="soon" data-action="waitlist">[ Keep Style & Generate Series ]<small>[ coming soon ]</small></button>`}<div class="action-row"><button class="black" data-action="download">[ Download ]</button><button data-action="compare">[ Compare ]</button></div></aside></div></div>${state.compareOpen ? compareHtml() : ""}${state.waitlistOpen ? waitlistHtml() : ""}`;
   }
   if (state.modal === "profile-edit") return profileEditModal();
   if (state.modal === "work-add") return workEditModal("Add New Work", "create-work");
@@ -337,11 +340,12 @@ function emptyWorkDraft() {
 }
 
 function compareHtml() {
-  return `<div class="overlay compare-layer"><div class="modal compare-modal"><button class="close" data-action="close-compare">[ X ]</button><h2>Before / After</h2><div class="compare-grid"><div><span>Before</span><img src="${state.selected.source || image("before")}" /></div><div><span>After</span><img src="${state.selected.image}" /></div></div></div></div>`;
+  return `<div class="overlay compare-layer"><div class="modal compare-modal"><button class="close" data-action="close-compare">[ X ]</button><h2>Before / After</h2><div class="compare-grid"><div><span>Before</span><div class="compare-frame"><img src="${state.selected.source || image("before")}" /></div></div><div><span>After</span><div class="compare-frame"><img src="${state.selected.image}" /></div></div></div></div></div>`;
 }
 
 function waitlistHtml() {
-  return `<div class="overlay waitlist-layer"><div class="modal waitlist"><button class="close" data-action="close-waitlist">[ X ]</button><h2>Keep Style Series</h2><p>Join the waiting list to get early access when consistent series generation is ready.</p><input placeholder="you@example.com" /><button class="black" data-action="close-waitlist">Join Waiting List</button></div></div>`;
+  const email = state.email === "hi@lazy60.com" ? "" : state.email;
+  return `<div class="overlay waitlist-layer"><div class="modal waitlist"><button class="close" data-action="close-waitlist">[ X ]</button><h2>Keep Style Series</h2><p>Join the waiting list to get early access when consistent series generation is ready.</p><input id="waitlist-email" value="${esc(email)}" placeholder="you@example.com" /><button class="black" data-action="join-waitlist">Join Waiting List</button></div></div>`;
 }
 
 function bind() {
@@ -353,6 +357,23 @@ function bind() {
   if (language) language.addEventListener("change", (e) => (state.language = e.target.value));
   const req = document.getElementById("requirements");
   if (req) req.addEventListener("input", (e) => (state.requirements = e.target.value));
+  document.querySelectorAll(".overlay").forEach((overlay) => {
+    overlay.addEventListener("click", (e) => {
+      if (e.target !== overlay) return;
+      if (overlay.classList.contains("waitlist-layer")) {
+        state.waitlistOpen = false;
+      } else if (overlay.classList.contains("compare-layer")) {
+        state.compareOpen = false;
+      } else {
+        state.modal = null;
+        state.compareOpen = false;
+        state.waitlistOpen = false;
+        state.portfolioDraft = null;
+        state.portfolioView = null;
+      }
+      render();
+    });
+  });
   const picker = document.getElementById("file-picker");
   picker.addEventListener("change", async (e) => {
     const files = [...e.target.files].slice(0, 4 - state.uploads.length);
@@ -421,9 +442,12 @@ async function handle(e) {
   if (a === "open") {
     state.selected = findItem(e.currentTarget.dataset.id);
     state.modal = "snapshot";
+    loadWaitlistStatus();
   }
   if (a === "compare") state.compareOpen = true;
   if (a === "waitlist") state.waitlistOpen = true;
+  if (a === "join-waitlist") await joinWaitlist();
+  if (a === "download") await downloadSelectedImage();
   if (a === "refund") refund(e.currentTarget.dataset.id);
   if (a === "edit-profile" && e.type === "dblclick" && state.isAdmin) {
     state.portfolioDraft = { ...state.portfolio.profile };
@@ -523,7 +547,7 @@ async function refund(id) {
     const data = await apiPost(`/api/jobs/${id}/refund`, {});
     applyUser(data.user);
     updateLocalJob(id, data.job);
-    toast("Points returned. The failed task is still visible in API Generation Logs.");
+    toast("Points returned.");
   } catch (error) {
     state.points += job.cost || 0;
     job.status = "refunded";
@@ -544,9 +568,9 @@ function findItem(id) {
 async function pollJob(id) {
   const startedAt = Date.now();
   const timer = setInterval(async () => {
-    if (Date.now() - startedAt > 180000) {
+    if (Date.now() - startedAt > GENERATION_TIMEOUT_MS) {
       clearInterval(timer);
-      updateLocalJob(id, { status: "failed", failureReason: "Timed out after 3 minutes.", progress: 100 });
+      updateLocalJob(id, { status: "failed", failureReason: "Timed out after 5 minutes.", progress: 100 });
       return;
     }
 
@@ -718,9 +742,9 @@ setInterval(() => {
   state.jobs.forEach((job) => {
     if (job.remote || job.status !== "processing") return;
     const elapsed = Date.now() - job.createdAt;
-    if (elapsed > 180000) {
+    if (elapsed > GENERATION_TIMEOUT_MS) {
       job.status = "failed";
-      job.failureReason = "Timed out after 3 minutes.";
+      job.failureReason = "Timed out after 5 minutes.";
     } else if (elapsed > 9000) {
       job.status = "succeeded";
       job.progress = 100;
@@ -865,12 +889,88 @@ async function loadSupabaseUser(token) {
   state.loggedIn = true;
   state.authLoading = false;
   state.email = data.email.toLowerCase();
+  state.waitlistJoined = readWaitlistCache(state.email);
   localStorage.setItem("lazy60_access_token", token);
   localStorage.setItem("lazy60_user_email", state.email);
   const me = await apiGet("/api/me");
   applyUser(me.user);
   await loadJobs();
   render();
+}
+
+async function loadWaitlistStatus() {
+  if (!state.email || state.email === "hi@lazy60.com") return;
+  if (readWaitlistCache(state.email)) {
+    state.waitlistJoined = true;
+    render();
+    return;
+  }
+  try {
+    const data = await apiGet(`/api/waitlist/status?email=${encodeURIComponent(state.email)}&feature=${encodeURIComponent(WAITLIST_FEATURE)}`);
+    state.waitlistJoined = Boolean(data.joined);
+    if (state.waitlistJoined) writeWaitlistCache(state.email);
+    render();
+  } catch {
+    state.waitlistJoined = readWaitlistCache(state.email);
+  }
+}
+
+async function joinWaitlist() {
+  const input = document.getElementById("waitlist-email");
+  const email = String(input?.value || state.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) return toast("Enter a valid email.");
+  try {
+    await apiPost("/api/waitlist", {
+      email,
+      feature: WAITLIST_FEATURE,
+      sourceJobId: state.selected?.id || null
+    });
+    state.email = email;
+    state.waitlistJoined = true;
+    writeWaitlistCache(email);
+    state.waitlistOpen = false;
+    toast("You are on the waiting list.");
+    render();
+  } catch (error) {
+    toast(`Waiting list unavailable: ${error.message}`);
+  }
+}
+
+async function downloadSelectedImage() {
+  if (!state.selected?.image) return;
+  const filename = `${cleanFileName(state.selected.productName || "lazy60-image")}.png`;
+  try {
+    const response = await fetch(state.selected.image);
+    if (!response.ok) throw new Error(`Download failed ${response.status}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, filename);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch {
+    triggerDownload(state.selected.image, filename);
+  }
+}
+
+function triggerDownload(url, filename) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function cleanFileName(value) {
+  return String(value || "lazy60-image").trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "lazy60-image";
+}
+
+function readWaitlistCache(email) {
+  return localStorage.getItem(`lazy60_waitlist_${WAITLIST_FEATURE}_${String(email || "").toLowerCase()}`) === "1";
+}
+
+function writeWaitlistCache(email) {
+  localStorage.setItem(`lazy60_waitlist_${WAITLIST_FEATURE}_${String(email || "").toLowerCase()}`, "1");
 }
 
 function readCachedUser() {
