@@ -355,13 +355,17 @@ function bind() {
   const picker = document.getElementById("file-picker");
   picker.addEventListener("change", async (e) => {
     const files = [...e.target.files].slice(0, 4 - state.uploads.length);
-    const uploads = await Promise.all(files.map(async (file, i) => ({
-      id: `${Date.now()}-${i}`,
-      url: URL.createObjectURL(file),
-      dataUrl: await readFileAsDataUrl(file),
-      name: file.name
-    })));
+    const uploads = await Promise.all(files.map(async (file, i) => {
+      const dataUrl = await readFileAsDataUrl(file);
+      return {
+        id: `${Date.now()}-${i}`,
+        url: dataUrl,
+        dataUrl,
+        name: file.name
+      };
+    }));
     state.uploads.push(...uploads);
+    e.target.value = "";
     render();
   });
   const portfolioPicker = document.getElementById("portfolio-file-picker");
