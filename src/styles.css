@@ -1073,6 +1073,8 @@ textarea {
   padding: 0;
   border: 0;
   background: #ddd;
+  position: relative;
+  overflow: hidden;
 }
 
 .image-button img,
@@ -1081,6 +1083,22 @@ textarea {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.image-button.image-missing img {
+  display: none;
+}
+
+.image-button.image-missing::after {
+  content: "Image expired";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #7d8799;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .result-card p {

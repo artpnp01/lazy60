@@ -174,7 +174,7 @@ function resultsHtml() {
 function cardHtml(item) {
   if (item.status === "processing") return `<article class="result-card"><div class="processing"><strong>Generating...</strong><div class="bar"><span style="width:${item.progress}%"></span></div></div><p>${esc(item.productName)} &middot; ${item.type}</p></article>`;
   if (item.status === "failed") return `<article class="result-card"><div class="failed"><strong>Task failed</strong><p>${item.failureReason}</p><button data-action="refund" data-id="${item.id}">Refund points</button></div><p>${esc(item.productName)} &middot; ${item.type}</p></article>`;
-  return `<article class="result-card"><button class="image-button" data-action="open" data-id="${item.id}"><img src="${item.image}" alt="" /></button><p>${esc(item.title || item.productName)} &middot; ${item.type}</p></article>`;
+  return `<article class="result-card"><button class="image-button" data-action="open" data-id="${item.id}"><img src="${item.image}" alt="" onerror="this.closest('.image-button').classList.add('image-missing')" /></button><p>${esc(item.title || item.productName)} &middot; ${item.type}</p></article>`;
 }
 
 function portfolioHtml() {

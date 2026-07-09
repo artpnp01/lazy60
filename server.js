@@ -22,6 +22,7 @@ let portfolioMemory = defaultPortfolio();
 
 loadEnv();
 supabaseReady = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const generationBucket = process.env.SUPABASE_GENERATION_BUCKET || "lazy60-generations";
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -350,7 +351,8 @@ async function runGeneration(id, body) {
     const image = process.env.KIE_API_KEY
       ? await generateWithKie(body)
       : await demoGenerate(body);
-    await updateJob(id, { status: "succeeded", progress: 100, image });
+    const storedImage = await persistGeneratedImage(image, id);
+    await updateJob(id, { status: "succeeded", progress: 100, image: storedImage });
   } catch (error) {
     await updateJob(id, {
       status: "failed",
@@ -720,6 +722,85 @@ async function updateSupabaseJob(id, job) {
   });
 }
 
+async function persistGeneratedImage(imageUrl, jobId) {
+  if (!supabaseReady || !imageUrl) return imageUrl;
+  try {
+    await ensureStorageBucket();
+    const asset = await readImageAsset(imageUrl);
+    const extension = extensionForContentType(asset.contentType, imageUrl);
+    const objectPath = [
+      cleanStorageSegment(user.id || "demo-user"),
+      new Date().toISOString().slice(0, 10),
+      `${cleanStorageSegment(jobId)}-${Date.now()}${extension}`
+    ].join("/");
+
+    await supabaseStorageRequest(`/storage/v1/object/${generationBucket}/${objectPath}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": asset.contentType,
+        "x-upsert": "true"
+      },
+      body: asset.buffer
+    });
+
+    return `${process.env.SUPABASE_URL}/storage/v1/object/public/${generationBucket}/${objectPath}`;
+  } catch (error) {
+    console.warn("Generated image persistence fallback:", error.message);
+    return imageUrl;
+  }
+}
+
+async function ensureStorageBucket() {
+  const existing = await supabaseStorageRequest(`/storage/v1/bucket/${generationBucket}`, {
+    method: "GET",
+    allowNotFound: true
+  });
+  if (existing) return;
+
+  await supabaseStorageRequest("/storage/v1/bucket", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: generationBucket,
+      name: generationBucket,
+      public: true,
+      file_size_limit: 20 * 1024 * 1024,
+      allowed_mime_types: ["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
+    }),
+    ignoreConflict: true
+  });
+}
+
+async function readImageAsset(imageUrl) {
+  if (imageUrl.startsWith("data:")) {
+    const match = imageUrl.match(/^data:([^;,]+)(;base64)?,(.*)$/);
+    if (!match) throw new Error("Invalid generated data URL.");
+    const contentType = match[1] || "image/png";
+    const buffer = match[2]
+      ? Buffer.from(match[3], "base64")
+      : Buffer.from(decodeURIComponent(match[3]));
+    return { buffer, contentType };
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) throw new Error(`Generated image download failed ${response.status}`);
+  const contentType = response.headers.get("content-type")?.split(";")[0] || "image/png";
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return { buffer, contentType };
+}
+
+function extensionForContentType(contentType, imageUrl) {
+  if (contentType === "image/jpeg") return ".jpg";
+  if (contentType === "image/webp") return ".webp";
+  if (contentType === "image/svg+xml") return ".svg";
+  const pathExt = new URL(imageUrl, "http://lazy60.local").pathname.match(/\.(png|jpg|jpeg|webp|svg)$/i)?.[0];
+  return pathExt ? pathExt.toLowerCase().replace(".jpeg", ".jpg") : ".png";
+}
+
+function cleanStorageSegment(value) {
+  return String(value || "asset").replace(/[^a-z0-9_-]/gi, "-").slice(0, 80) || "asset";
+}
+
 async function listSupabaseJobs() {
   await ensureSupabaseUser();
   const rows = await supabaseSelect(
@@ -999,6 +1080,26 @@ async function supabaseRequest(pathname, options) {
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
     throw new Error(data?.message || data?.hint || `Supabase error ${response.status}`);
+  }
+  return data;
+}
+
+async function supabaseStorageRequest(pathname, options) {
+  const response = await fetch(`${process.env.SUPABASE_URL}${pathname}`, {
+    method: options.method,
+    headers: {
+      "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY,
+      "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      ...(options.headers || {})
+    },
+    body: options.body
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (response.status === 404 && options.allowNotFound) return null;
+  if ((response.status === 400 || response.status === 409) && options.ignoreConflict) return data;
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Supabase storage error ${response.status}`);
   }
   return data;
 }
