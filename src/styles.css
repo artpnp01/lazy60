@@ -1426,8 +1426,8 @@ textarea {
 }
 
 .compare-modal {
-  width: 1000px;
-  padding: 36px;
+  width: min(1160px, calc(100vw - 72px));
+  padding: 34px 36px 36px;
 }
 
 .compare-grid {

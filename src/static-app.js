@@ -341,7 +341,7 @@ function emptyWorkDraft() {
 }
 
 function compareHtml() {
-  return `<div class="overlay compare-layer"><div class="modal compare-modal"><button class="close" data-action="close-compare">[ X ]</button><h2>Before / After</h2><div class="compare-grid"><div><span>Before</span><div class="compare-frame"><img src="${state.selected.source || image("before")}" /></div></div><div><span>After</span><div class="compare-frame"><img src="${state.selected.image}" /></div></div></div></div></div>`;
+  return `<div class="overlay compare-layer"><div class="modal work-viewer compare-modal"><button class="close" data-action="close-compare">[ Close ]</button><h2>Before / After</h2><div class="before-after-grid"><figure><figcaption>Before (Raw)</figcaption><img src="${state.selected.source || image("before")}" alt="" /></figure><figure><figcaption>After (Studio)</figcaption><img src="${state.selected.image}" alt="" /></figure></div></div></div>`;
 }
 
 function waitlistHtml() {
