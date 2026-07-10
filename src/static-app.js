@@ -116,7 +116,8 @@ function render() {
 
 function authHtml() {
   if (state.authLoading) {
-    return `<div class="user-chip muted">${esc(state.email)}</div><div class="points">Restoring...</div>`;
+    const cachedEmail = state.email && state.email !== "hi@lazy60.com" ? `<div class="user-chip muted">${esc(state.email)}</div>` : "";
+    return `${cachedEmail}<div class="points">Restoring...</div>`;
   }
   if (!state.loggedIn) return `<button class="black" data-action="login">G Sign in with Google</button>`;
   return `<div class="user-chip">${esc(state.email)}</div><div class="points">${state.paymentSyncing ? "Syncing payment..." : `${state.points} Points`}</div><button class="black small" data-action="topup">+ Top-up</button>`;
@@ -601,13 +602,12 @@ function normalizeApiJob(job, fallbackSource = "") {
 }
 
 async function login() {
-  const savedToken = localStorage.getItem("lazy60_access_token");
-  if (savedToken) {
-    state.authToken = savedToken;
-    await loadSupabaseUser(savedToken);
-    return;
-  }
   if (!state.supabaseUrl || !state.supabaseAnonKey) await checkApiOnce();
+  if (localStorage.getItem("lazy60_access_token") || localStorage.getItem("lazy60_refresh_token")) {
+    state.authLoading = true;
+    render();
+    if (await restoreStoredSession()) return;
+  }
   if (state.supabaseUrl && state.supabaseAnonKey) {
     const redirectTo = window.location.origin + window.location.pathname;
     const authUrl = `${state.supabaseUrl}/auth/v1/authorize?provider=google&flow_type=implicit&redirect_to=${encodeURIComponent(redirectTo)}`;
@@ -830,7 +830,9 @@ async function restoreSupabaseSession() {
     state.authToken = accessToken;
     if (refreshToken) localStorage.setItem("lazy60_refresh_token", refreshToken);
     window.history.replaceState({}, document.title, window.location.pathname);
-    await loadSupabaseUser(accessToken);
+    if (!await loadSupabaseUser(accessToken, { silentFail: Boolean(refreshToken) }) && refreshToken) {
+      await refreshSupabaseSession(refreshToken);
+    }
     return;
   }
 
@@ -840,13 +842,9 @@ async function restoreSupabaseSession() {
     return;
   }
 
-  const savedToken = localStorage.getItem("lazy60_access_token");
-  if (savedToken) {
-    state.authToken = savedToken;
-    await loadSupabaseUser(savedToken);
-  } else {
-    state.authLoading = false;
-  }
+  if (await restoreStoredSession()) return;
+  state.authLoading = false;
+  render();
 }
 
 async function exchangeCodeForSession(code) {
@@ -868,7 +866,44 @@ async function exchangeCodeForSession(code) {
   }
 }
 
-async function loadSupabaseUser(token) {
+async function restoreStoredSession() {
+  const savedToken = localStorage.getItem("lazy60_access_token");
+  const refreshToken = localStorage.getItem("lazy60_refresh_token");
+  if (savedToken) {
+    state.authToken = savedToken;
+    if (await loadSupabaseUser(savedToken, { silentFail: true })) return true;
+  }
+  if (refreshToken && await refreshSupabaseSession(refreshToken)) return true;
+  clearStoredAuth();
+  return false;
+}
+
+async function refreshSupabaseSession(refreshToken) {
+  if (!state.supabaseUrl || !state.supabaseAnonKey || !refreshToken) return false;
+  try {
+    const response = await fetch(`${state.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": state.supabaseAnonKey
+      },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.access_token) throw new Error(data.error_description || data.msg || "Could not refresh session.");
+    state.authToken = data.access_token;
+    localStorage.setItem("lazy60_access_token", data.access_token);
+    if (data.refresh_token) localStorage.setItem("lazy60_refresh_token", data.refresh_token);
+    return await loadSupabaseUser(data.access_token);
+  } catch {
+    clearStoredAuth();
+    state.authLoading = false;
+    render();
+    return false;
+  }
+}
+
+async function loadSupabaseUser(token, options = {}) {
   const response = await fetch(`${state.supabaseUrl}/auth/v1/user`, {
     headers: {
       "apikey": state.supabaseAnonKey,
@@ -877,14 +912,13 @@ async function loadSupabaseUser(token) {
   });
   const data = await response.json();
   if (!response.ok || !data.email) {
-    localStorage.removeItem("lazy60_access_token");
-    localStorage.removeItem("lazy60_user_email");
-    localStorage.removeItem("lazy60_cached_user");
+    if (options.silentFail) return false;
+    clearStoredAuth();
     state.authToken = "";
     state.loggedIn = false;
     state.authLoading = false;
     render();
-    return;
+    return false;
   }
   state.loggedIn = true;
   state.authLoading = false;
@@ -896,6 +930,16 @@ async function loadSupabaseUser(token) {
   applyUser(me.user);
   await loadJobs();
   render();
+  return true;
+}
+
+function clearStoredAuth() {
+  localStorage.removeItem("lazy60_access_token");
+  localStorage.removeItem("lazy60_refresh_token");
+  localStorage.removeItem("lazy60_user_email");
+  localStorage.removeItem("lazy60_cached_user");
+  state.authToken = "";
+  state.loggedIn = false;
 }
 
 async function loadWaitlistStatus() {
@@ -939,16 +983,12 @@ async function joinWaitlist() {
 async function downloadSelectedImage() {
   if (!state.selected?.image) return;
   const filename = `${cleanFileName(state.selected.productName || "lazy60-image")}.png`;
-  try {
-    const response = await fetch(state.selected.image);
-    if (!response.ok) throw new Error(`Download failed ${response.status}`);
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    triggerDownload(url, filename);
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-  } catch {
+  if (state.selected.image.startsWith("data:")) {
     triggerDownload(state.selected.image, filename);
+    return;
   }
+  const url = `/api/download-image?url=${encodeURIComponent(state.selected.image)}&filename=${encodeURIComponent(filename)}`;
+  triggerDownload(url, filename);
 }
 
 function triggerDownload(url, filename) {

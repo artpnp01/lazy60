@@ -91,6 +91,11 @@ async function handleApi(request, response, url) {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/download-image") {
+    await proxyImageDownload(response, url);
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/api/topup") {
     const body = await readJson(request);
     const points = Number(body.points || 0);
@@ -587,6 +592,39 @@ function sendJson(response, status, body) {
     "Cache-Control": "no-store"
   });
   response.end(JSON.stringify(body));
+}
+
+async function proxyImageDownload(response, url) {
+  const imageUrl = url.searchParams.get("url") || "";
+  const filename = cleanDownloadFilename(url.searchParams.get("filename") || "lazy60-image.png");
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    sendJson(response, 400, { error: "Valid image URL is required" });
+    return;
+  }
+
+  const upstream = await fetch(imageUrl);
+  if (!upstream.ok) {
+    sendJson(response, upstream.status, { error: `Image download failed ${upstream.status}` });
+    return;
+  }
+
+  const contentType = upstream.headers.get("content-type")?.split(";")[0] || "application/octet-stream";
+  const buffer = Buffer.from(await upstream.arrayBuffer());
+  response.writeHead(200, {
+    "Content-Type": contentType,
+    "Content-Length": buffer.length,
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store"
+  });
+  response.end(buffer);
+}
+
+function cleanDownloadFilename(value) {
+  const cleaned = String(value || "lazy60-image.png")
+    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 120);
+  return /\.[a-z0-9]{2,5}$/i.test(cleaned) ? cleaned : `${cleaned || "lazy60-image"}.png`;
 }
 
 function publicUser() {
