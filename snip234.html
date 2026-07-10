@@ -21,10 +21,10 @@
 
     body {
       min-height: 100vh;
-      padding: 72px 82px 62px;
+      padding: 64px 72px 56px;
       display: grid;
       grid-template-rows: auto 1fr auto;
-      gap: 54px;
+      gap: 44px;
     }
 
     .topline,
@@ -42,30 +42,41 @@
     }
 
     main {
+      width: 100%;
+      max-width: 1780px;
+      margin: 0 auto;
       display: grid;
-      grid-template-columns: minmax(420px, 760px) minmax(420px, 1fr);
+      grid-template-columns: minmax(420px, .86fr) minmax(620px, 1.14fr);
       align-items: center;
-      gap: 86px;
+      gap: clamp(56px, 6vw, 112px);
+    }
+
+    main > section:first-child {
+      max-width: 670px;
     }
 
     h1 {
-      margin: 0 0 30px;
-      max-width: 720px;
-      font-size: clamp(70px, 7.2vw, 126px);
-      line-height: .82;
+      margin: 0 0 28px;
+      max-width: 640px;
+      font-size: clamp(54px, 5vw, 86px);
+      line-height: .9;
       text-transform: uppercase;
-      letter-spacing: -4px;
+      letter-spacing: -2px;
     }
 
     .copy {
-      max-width: 680px;
-      margin: 0 0 40px;
+      max-width: 610px;
+      margin: 0 0 32px;
       color: #484848;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 22px;
-      line-height: 1.48;
+      font-size: 20px;
+      line-height: 1.46;
       font-weight: 800;
       letter-spacing: 0;
+    }
+
+    .copy + .copy {
+      margin-bottom: 48px;
     }
 
     .copy strong {
@@ -75,8 +86,8 @@
     }
 
     .download {
-      width: min(100%, 730px);
-      min-height: 124px;
+      width: min(100%, 600px);
+      min-height: 104px;
       border: 2px solid #000;
       background: #000;
       color: #fff;
@@ -97,7 +108,7 @@
     }
 
     .download span {
-      font-size: clamp(26px, 2.8vw, 42px);
+      font-size: clamp(24px, 2.1vw, 34px);
       line-height: .9;
       text-transform: uppercase;
     }
@@ -117,10 +128,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      min-width: 0;
     }
 
     .visual img {
-      width: min(100%, 760px);
+      width: min(100%, 940px);
       height: auto;
       display: block;
       background: #000;
@@ -161,7 +173,7 @@
       }
 
       h1 {
-        font-size: clamp(54px, 16vw, 88px);
+        font-size: clamp(48px, 13vw, 74px);
         letter-spacing: -2px;
       }
 
@@ -208,7 +220,6 @@
       Crafted by <strong>Cayman Lau</strong> / artpnp01@gmail.com
     </div>
     <div class="links">
-      <a href="https://log2chat.com">LOG2CHAT.COM</a><br />
       <a href="https://lazy60.com">LAZY60.COM</a>
     </div>
   </footer>
