@@ -32,6 +32,7 @@ create table if not exists generation_jobs (
   design_type_id text not null,
   design_type_label text not null,
   prompt text not null,
+  api_prompt text,
   target_language text not null,
   resolution text not null,
   cost integer not null default 0,

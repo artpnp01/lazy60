@@ -23,6 +23,7 @@ const PACKS = [
 const bootstrapToken = localStorage.getItem("lazy60_access_token") || "";
 const bootstrapEmail = localStorage.getItem("lazy60_user_email") || localStorage.getItem("lazy60_checkout_email") || "hi@lazy60.com";
 const bootstrapUser = readCachedUser();
+const bootstrapJobs = readCachedJobs(bootstrapEmail);
 const bootstrapQuery = new URLSearchParams(window.location.search);
 const bootstrapHash = new URLSearchParams(window.location.hash.slice(1));
 const needsAuthRestore = Boolean(
@@ -69,13 +70,16 @@ const state = {
   requirements: DESIGN_TYPES[0][2],
   resolution: "1K",
   jobs: [],
+  jobsLoading: false,
   modal: null,
   selected: null,
   compareOpen: false,
   waitlistOpen: false,
+  authMenuOpen: false,
   waitlistJoined: readWaitlistCache(bootstrapEmail),
   apiOnline: false
 };
+state.jobs = bootstrapJobs;
 
 const demoEmail = new URLSearchParams(window.location.search).get("email");
 if (demoEmail) state.email = demoEmail.trim().toLowerCase();
@@ -94,13 +98,12 @@ function image(kind = "generated") {
 }
 
 function render() {
+  if (state.route === "admin" && !state.isAdmin) state.route = "app";
   document.getElementById("root").innerHTML = `
     <header class="topbar">
       <button class="brand" data-action="route" data-route="app">LAZY60</button>
       <nav class="topnav">
-        <button class="${state.route === "app" ? "active-link" : ""}" data-action="route" data-route="app">Generator</button>
-        <button class="${state.route === "portfolio" ? "active-link" : ""}" data-action="route" data-route="portfolio">Portfolio</button>
-        <button class="${state.route === "admin" ? "active-link" : ""}" data-action="route" data-route="admin">Admin</button>
+        ${state.isAdmin ? `<button class="${state.route === "admin" ? "active-link" : ""}" data-action="route" data-route="admin">Admin</button>` : ""}
       </nav>
       <div class="auth">${authHtml()}</div>
     </header>
@@ -120,7 +123,7 @@ function authHtml() {
     return `${cachedEmail}<div class="points">Restoring...</div>`;
   }
   if (!state.loggedIn) return `<button class="black" data-action="login">G Sign in with Google</button>`;
-  return `<div class="user-chip">${esc(state.email)}</div><div class="points">${state.paymentSyncing ? "Syncing payment..." : `${state.points} Points`}</div><button class="black small" data-action="topup">+ Top-up</button>`;
+  return `<div class="user-menu"><button class="user-chip" data-action="toggle-auth-menu">${esc(state.email)}</button>${state.authMenuOpen ? `<div class="user-dropdown"><button data-action="request-logout">Log out</button></div>` : ""}</div><div class="points">${state.paymentSyncing ? "Syncing payment..." : `${state.points} Points`}</div><button class="black small" data-action="topup">+ Top-up</button>`;
 }
 
 function appHtml() {
@@ -131,7 +134,7 @@ function appHtml() {
       <p>AI did not nail it? Let the founder design for you directly.</p>
       <ul><li>Image detail edits</li><li>Ad layouts and social covers</li><li>Portfolio-backed ecommerce design</li></ul>
       <div class="contact-row"><a class="contact-button" href="${state.portfolio.profile.whatsappUrl}" target="_blank" rel="noopener"><span class="icon whatsapp-icon"></span>WhatsApp</a><a class="contact-button" href="${state.portfolio.profile.messengerUrl}" target="_blank" rel="noopener"><span class="icon messenger-icon"></span>Messenger</a></div>
-      <button class="portfolio" data-action="route" data-route="portfolio">[ View My Portfolio -> ]</button>
+      <button class="portfolio" data-action="route" data-route="portfolio">[ View Portfolio -> ]</button>
       <a class="email" href="mailto:${esc(state.portfolio.profile.email)}">${esc(state.portfolio.profile.email)}</a>
       <span class="copyright">&copy; LAZY60 STUDIO</span>
     </aside>
@@ -172,7 +175,7 @@ function resultsHtml() {
     { id: "s3", title: "Skin Serum", type: "Texture Detail", image: image("serum"), prompt: "Macro skincare texture image with premium reflections and minimal luxury layout." }
   ];
   const items = state.loggedIn ? state.jobs : showcase;
-  return `<div class="result-head"><h2>${state.loggedIn ? "Your Generations" : "Community Showcase"}</h2><p>${state.loggedIn ? "Async status and history" : "Log in to view your own logs"}</p></div>
+  return `<div class="result-head"><h2>${state.loggedIn ? "Your Generations" : "Community Showcase"}</h2><p>${state.loggedIn ? (state.jobsLoading ? "Updating history..." : "Async status and history") : "Log in to view your own logs"}</p></div>
   ${items.length ? items.map(cardHtml).join("") : `<div class="empty">Your generations will appear here.</div>`}`;
 }
 
@@ -251,7 +254,7 @@ function adminContent() {
 
   if (state.adminTab === "API Generation Logs") {
     return `<div class="admin-top"><div><h1>API Generation Logs</h1><p>Failed, refunded, and successful jobs appear here.</p></div></div>
-    <table><thead><tr><th>Status</th><th>User</th><th>Resolution</th><th>Cost</th><th>Prompt</th></tr></thead><tbody>${state.jobs.length ? state.jobs.map((j) => `<tr class="${j.status === "failed" ? "warn" : ""}"><td>${j.status}</td><td>${esc(state.email)}</td><td>${j.resolution}</td><td>${j.cost} pts</td><td>${esc(j.prompt)}</td></tr>`).join("") : `<tr><td colspan="5">No generation jobs yet. Failed and refunded jobs will be highlighted here.</td></tr>`}</tbody></table>`;
+    <table><thead><tr><th>Status</th><th>User</th><th>Resolution</th><th>Cost</th><th>User Prompt</th><th>API Prompt</th></tr></thead><tbody>${state.jobs.length ? state.jobs.map((j) => `<tr class="${j.status === "failed" ? "warn" : ""}"><td>${j.status}</td><td>${esc(state.email)}</td><td>${j.resolution}</td><td>${j.cost} pts</td><td>${esc(j.prompt)}</td><td>${esc(j.apiPrompt || "Available for new jobs after this update.")}</td></tr>`).join("") : `<tr><td colspan="6">No generation jobs yet. Failed and refunded jobs will be highlighted here.</td></tr>`}</tbody></table>`;
   }
 
   if (state.adminTab === "Featured Showcase") {
@@ -269,7 +272,10 @@ function adminContent() {
 
 function modalHtml() {
   if (state.modal === "topup") {
-    return `<div class="overlay"><div class="modal topup"><button class="close" data-action="close">[ X ]</button><h2>Top-up Points</h2><p>Pay as you go. No subscriptions. Points never expire.</p><div class="packs">${PACKS.map(([id, name, dollars, points, bonus, note]) => `<article class="pack ${name === "Growth" ? "primary" : ""}">${bonus ? `<div class="bonus">${bonus}</div>` : ""}<h3>${name}</h3><strong>${points}<span> Pts</span></strong><p>${note}</p><small>1K Base: $${(dollars / (points / 2)).toFixed(2)}/img</small><small>2K HD: $${(dollars / (points / 3)).toFixed(2)}/img</small><b>$${dollars}</b><button class="${name === "Growth" ? "black" : ""}" data-action="buy" data-pack="${id}" data-points="${points}">Purchase - $${dollars}</button></article>`).join("")}</div><div class="checkout">Safe checkout <span>stripe</span><span>VISA</span><span>Mastercard</span><span>AmEx</span></div></div></div>`;
+    return `<div class="overlay"><div class="modal topup"><button class="close" data-action="close">[ X ]</button><h2>Top-up Points</h2><p>Pay as you go. No subscriptions. Points never expire.</p><div class="packs">${PACKS.map(([id, name, dollars, points, bonus, note]) => `<article class="pack ${name === "Growth" ? "primary" : ""}">${bonus ? `<div class="bonus">${bonus}</div>` : ""}<h3>${name}</h3><strong>${points}<span> Pts</span></strong><p>${note}</p><small>1K Base: $${(dollars / (points / 2)).toFixed(2)}/img</small><small>2K HD: $${(dollars / (points / 3)).toFixed(2)}/img</small><b>$${dollars}</b><button class="${name === "Growth" ? "black" : ""}" data-action="buy" data-pack="${id}" data-points="${points}">Purchase - $${dollars}</button></article>`).join("")}</div><div class="checkout payment-strip"><span class="safe">Safe checkout</span><span class="pay-logo stripe">stripe</span><span class="pay-logo visa">VISA</span><span class="pay-logo mc"><i></i><i></i></span><span class="pay-logo amex">AMEX</span><span class="pay-logo apple">Apple Pay</span><span class="pay-logo google">G Pay</span></div></div></div>`;
+  }
+  if (state.modal === "logout-confirm") {
+    return `<div class="overlay"><div class="modal confirm"><button class="close" data-action="close">[ X ]</button><h2>Log out?</h2><p>You will need to sign in again before generating or viewing your private history.</p><div class="form-actions"><button class="black" data-action="confirm-logout">Log out</button><button data-action="close">Cancel</button></div></div></div>`;
   }
   if (state.modal === "snapshot" && state.selected) {
     const j = state.selected;
@@ -404,12 +410,30 @@ function bind() {
 async function handle(e) {
   const a = e.currentTarget.dataset.action;
   if (a === "route") {
-    state.route = e.currentTarget.dataset.route;
+    const nextRoute = e.currentTarget.dataset.route;
+    if (nextRoute === "admin" && !state.isAdmin) {
+      state.route = "app";
+      state.authMenuOpen = false;
+      toast("Admin access required.");
+      render();
+      return;
+    }
+    state.route = nextRoute;
+    state.authMenuOpen = false;
     window.history.pushState({}, "", state.route === "portfolio" ? "/portfolio" : "/");
   }
+  if (a === "toggle-auth-menu") state.authMenuOpen = !state.authMenuOpen;
+  if (a === "request-logout") {
+    state.authMenuOpen = false;
+    state.modal = "logout-confirm";
+  }
+  if (a === "confirm-logout") logout();
   if (a === "admin-tab") state.adminTab = e.currentTarget.dataset.tab;
   if (a === "login") await login();
-  if (a === "topup") state.modal = "topup";
+  if (a === "topup") {
+    state.authMenuOpen = false;
+    state.modal = "topup";
+  }
   if (a === "close") {
     state.modal = null;
     state.compareOpen = false;
@@ -444,6 +468,7 @@ async function handle(e) {
     state.selected = findItem(e.currentTarget.dataset.id);
     state.modal = "snapshot";
     loadWaitlistStatus();
+    hydrateSelectedJob(e.currentTarget.dataset.id);
   }
   if (a === "compare") state.compareOpen = true;
   if (a === "waitlist") state.waitlistOpen = true;
@@ -566,6 +591,21 @@ function findItem(id) {
   return state.jobs.find((j) => j.id === id) || showcase.find((s) => s.id === id);
 }
 
+async function hydrateSelectedJob(id) {
+  if (!id || String(id).startsWith("s")) return;
+  try {
+    const data = await apiGet(`/api/jobs/${encodeURIComponent(id)}`);
+    const fullJob = normalizeApiJob(data.job);
+    updateLocalJob(id, fullJob);
+    if (state.selected?.id === id) {
+      state.selected = { ...state.selected, ...fullJob };
+      render();
+    }
+  } catch {
+    // Keep the lightweight history item if detail loading is unavailable.
+  }
+}
+
 async function pollJob(id) {
   const startedAt = Date.now();
   const timer = setInterval(async () => {
@@ -626,8 +666,15 @@ async function login() {
 }
 
 async function loadJobs() {
-  const data = await apiGet("/api/jobs");
-  state.jobs = (data.jobs || []).map((job) => normalizeApiJob(job));
+  if (!state.email || state.email === "hi@lazy60.com") return;
+  state.jobsLoading = true;
+  try {
+    const data = await apiGet("/api/jobs");
+    state.jobs = (data.jobs || []).map((job) => normalizeApiJob(job));
+    writeCachedJobs(state.email, state.jobs);
+  } finally {
+    state.jobsLoading = false;
+  }
 }
 
 async function loadPortfolio(force = false) {
@@ -735,6 +782,25 @@ function applyUser(user) {
     freeAvailable: state.freeAvailable,
     savedAt: Date.now()
   }));
+}
+
+function logout() {
+  clearStoredAuth();
+  localStorage.removeItem("lazy60_checkout_email");
+  state.email = state.portfolio.profile.email || "hi@lazy60.com";
+  state.points = 0;
+  state.paid = false;
+  state.freeAvailable = true;
+  state.isAdmin = false;
+  state.jobs = [];
+  state.jobsLoading = false;
+  state.route = "app";
+  state.modal = null;
+  state.selected = null;
+  state.compareOpen = false;
+  state.waitlistOpen = false;
+  state.authMenuOpen = false;
+  toast("Logged out.");
 }
 
 setInterval(() => {
@@ -924,6 +990,11 @@ async function loadSupabaseUser(token, options = {}) {
   state.authLoading = false;
   state.email = data.email.toLowerCase();
   state.waitlistJoined = readWaitlistCache(state.email);
+  const cachedJobs = readCachedJobs(state.email);
+  if (cachedJobs.length) {
+    state.jobs = cachedJobs;
+    render();
+  }
   localStorage.setItem("lazy60_access_token", token);
   localStorage.setItem("lazy60_user_email", state.email);
   const me = await apiGet("/api/me");
@@ -1023,6 +1094,23 @@ function readCachedUser() {
   } catch {
     return null;
   }
+}
+
+function readCachedJobs(email) {
+  try {
+    const raw = localStorage.getItem(`lazy60_jobs_${String(email || "").toLowerCase()}`);
+    if (!raw) return [];
+    const cached = JSON.parse(raw);
+    if (!Array.isArray(cached)) return [];
+    return cached.map((job) => normalizeApiJob(job)).slice(0, 30);
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedJobs(email, jobs) {
+  if (!email || email === "hi@lazy60.com") return;
+  localStorage.setItem(`lazy60_jobs_${String(email).toLowerCase()}`, JSON.stringify((jobs || []).slice(0, 30)));
 }
 
 function wait(ms) {

@@ -202,7 +202,15 @@ async function handleApi(request, response, url) {
 
   const jobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)$/);
   if (request.method === "GET" && jobMatch) {
-    const job = jobs.get(jobMatch[1]);
+    let job = jobs.get(jobMatch[1]);
+    if (!job && supabaseReady && isUuid(jobMatch[1])) {
+      await ensureSupabaseUser();
+      const rows = await supabaseSelect(
+        "generation_jobs",
+        `id=eq.${encodeURIComponent(jobMatch[1])}&user_id=eq.${user.id}&limit=1`
+      );
+      job = rows[0] ? jobFromSupabaseRow(rows[0], { includeSource: true }) : null;
+    }
     if (!job) {
       sendJson(response, 404, { error: "Job not found" });
       return;
@@ -314,6 +322,7 @@ async function createJob(body) {
     productName: body.productName,
     type: body.type,
     prompt: body.prompt,
+    apiPrompt: buildApiPrompt(body),
     language: body.language,
     resolution: body.resolution,
     cost: body.cost || 0,
@@ -428,15 +437,7 @@ async function demoGenerate(body) {
 
 async function generateWithKie(body) {
   const inputUrls = await uploadImagesToKie(body.images || []);
-  const prompt = [
-    `This is ${body.productName}.`,
-    `Create a high-quality ecommerce promotional design.`,
-    `Design requirement: ${body.prompt}`,
-    `All visible text in the final design must use this target language: ${body.language || "English"}.`,
-    body.typeId === "custom"
-      ? "Follow the user's custom requirement directly without forcing a preset layout."
-      : `Design type: ${body.type}.`
-  ].join("\n");
+  const prompt = buildApiPrompt(body);
 
   const created = await kieJson("https://api.kie.ai/api/v1/jobs/createTask", {
     method: "POST",
@@ -459,6 +460,18 @@ async function generateWithKie(body) {
   const url = resultJson.resultUrls?.[0];
   if (!url) throw new Error("KIE task succeeded but returned no image URL.");
   return url;
+}
+
+function buildApiPrompt(body) {
+  return [
+    `This is ${body.productName}.`,
+    `Create a high-quality ecommerce promotional design.`,
+    `Design requirement: ${body.prompt}`,
+    `All visible text in the final design must use this target language: ${body.language || "English"}.`,
+    body.typeId === "custom"
+      ? "Follow the user's custom requirement directly without forcing a preset layout."
+      : `Design type: ${body.type}.`
+  ].join("\n");
 }
 
 async function uploadImagesToKie(images) {
@@ -891,7 +904,7 @@ async function listSupabaseJobs() {
     "generation_jobs",
     `user_id=eq.${user.id}&order=created_at.desc&limit=30`
   );
-  return rows.map(jobFromSupabaseRow);
+  return rows.map((row) => jobFromSupabaseRow(row, { includeSource: false }));
 }
 
 async function waitlistHasEmail(email, feature) {
@@ -913,7 +926,8 @@ async function joinWaitlist(email, feature, sourceJobId) {
   });
 }
 
-function jobFromSupabaseRow(row) {
+function jobFromSupabaseRow(row, options = {}) {
+  const includeSource = options.includeSource !== false;
   return {
     id: row.id,
     status: row.status,
@@ -922,13 +936,20 @@ function jobFromSupabaseRow(row) {
     type: row.design_type_label,
     typeId: row.design_type_id,
     prompt: row.prompt,
+    apiPrompt: row.api_prompt || buildApiPrompt({
+      productName: row.product_name,
+      prompt: row.prompt,
+      language: row.target_language,
+      typeId: row.design_type_id,
+      type: row.design_type_label
+    }),
     language: row.target_language,
     resolution: row.resolution,
     cost: row.cost,
     billingType: row.billing_type,
     watermark: row.watermark,
     refunded: row.refunded,
-    source: row.source_images?.[0] || "",
+    source: includeSource ? row.source_images?.[0] || "" : "",
     image: row.output_image_url || "",
     failureReason: row.failure_reason || "",
     createdAt: new Date(row.created_at).getTime(),
