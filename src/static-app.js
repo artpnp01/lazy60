@@ -62,6 +62,7 @@ const state = {
   portfolioDraft: null,
   portfolioView: null,
   portfolioLoaded: false,
+  portfolioLoading: false,
   portfolioImageField: "",
   uploads: [],
   productName: "",
@@ -71,6 +72,7 @@ const state = {
   resolution: "1K",
   jobs: [],
   jobsLoading: false,
+  generating: false,
   modal: null,
   selected: null,
   compareOpen: false,
@@ -114,7 +116,7 @@ function render() {
   `;
   bind();
   checkApiOnce();
-  if (state.route === "portfolio" && !state.portfolioLoaded) loadPortfolio();
+  if (!state.portfolioLoaded) loadPortfolio();
 }
 
 function authHtml() {
@@ -151,7 +153,7 @@ function appHtml() {
       <div class="generator-footer">
         <div class="res-row"><span>RES:</span>${["1K", "2K", "4K"].map((r) => resButton(r)).join("")}</div>
         ${state.loggedIn && !state.paid ? `<p class="refresh">Free credit refreshes in ${refresh()}</p>` : ""}
-        <button class="black generate" data-action="generate">${generateLabel()}</button>
+        <button class="black generate" data-action="generate" ${state.generating ? "disabled" : ""}>${generateLabel()}</button>
       </div>
     </section>
     <aside class="results">${resultsHtml()}</aside>
@@ -272,7 +274,7 @@ function adminContent() {
 
 function modalHtml() {
   if (state.modal === "topup") {
-    return `<div class="overlay"><div class="modal topup"><button class="close" data-action="close">[ X ]</button><h2>Top-up Points</h2><p>Pay as you go. No subscriptions. Points never expire.</p><div class="packs">${PACKS.map(([id, name, dollars, points, bonus, note]) => `<article class="pack ${name === "Growth" ? "primary" : ""}">${bonus ? `<div class="bonus">${bonus}</div>` : ""}<h3>${name}</h3><strong>${points}<span> Pts</span></strong><p>${note}</p><small>1K Base: $${(dollars / (points / 2)).toFixed(2)}/img</small><small>2K HD: $${(dollars / (points / 3)).toFixed(2)}/img</small><b>$${dollars}</b><button class="${name === "Growth" ? "black" : ""}" data-action="buy" data-pack="${id}" data-points="${points}">Purchase - $${dollars}</button></article>`).join("")}</div><div class="checkout payment-strip"><span class="safe">Safe checkout</span><span class="pay-logo stripe">stripe</span><span class="pay-logo visa">VISA</span><span class="pay-logo mc"><i></i><i></i></span><span class="pay-logo amex">AMEX</span><span class="pay-logo apple">Apple Pay</span><span class="pay-logo google">G Pay</span></div></div></div>`;
+    return `<div class="overlay"><div class="modal topup"><button class="close" data-action="close">[ X ]</button><h2>Top-up Points</h2><p>Pay as you go. No subscriptions. Points never expire.</p><div class="packs">${PACKS.map(([id, name, dollars, points, bonus, note]) => `<article class="pack ${name === "Growth" ? "primary" : ""}">${bonus ? `<div class="bonus">${bonus}</div>` : ""}<h3>${name}</h3><strong>${points}<span> Pts</span></strong><p>${note}</p><small>1K Base: $${(dollars / (points / 2)).toFixed(2)}/img</small><small>2K HD: $${(dollars / (points / 3)).toFixed(2)}/img</small><b>$${dollars}</b><button class="${name === "Growth" ? "black" : ""}" data-action="buy" data-pack="${id}" data-points="${points}">Purchase - $${dollars}</button></article>`).join("")}</div><div class="checkout payment-strip"><span class="safe">Secure payment</span>${paymentLogo("Stripe", "https://upload.wikimedia.org/wikipedia/commons/b/ba/Stripe_Logo%2C_revised_2016.svg")}${paymentLogo("Visa", "https://upload.wikimedia.org/wikipedia/commons/b/bb/Visa-icon.svg")}${paymentLogo("Mastercard", "https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg")}${paymentLogo("American Express", "https://upload.wikimedia.org/wikipedia/commons/3/30/American_Express_logo.svg")}${paymentLogo("Apple Pay", "https://upload.wikimedia.org/wikipedia/commons/b/b0/Apple_Pay_logo.svg")}${paymentLogo("Google Pay", "https://upload.wikimedia.org/wikipedia/commons/f/f2/Google_Pay_Logo.svg")}</div></div></div>`;
   }
   if (state.modal === "logout-confirm") {
     return `<div class="overlay"><div class="modal confirm"><button class="close" data-action="close">[ X ]</button><h2>Log out?</h2><p>You will need to sign in again before generating or viewing your private history.</p><div class="form-actions"><button class="black" data-action="confirm-logout">Log out</button><button data-action="close">Cancel</button></div></div></div>`;
@@ -286,6 +288,10 @@ function modalHtml() {
   if (state.modal === "work-edit") return workEditModal(`Edit Case ID: ${state.portfolioDraft?.id || ""}`, "save-work");
   if (state.modal === "work-view" && state.portfolioView) return workViewModal(state.portfolioView);
   return "";
+}
+
+function paymentLogo(label, url) {
+  return `<span class="pay-logo"><img src="${url}" alt="${label}" loading="lazy" /></span>`;
 }
 
 function profileEditModal() {
@@ -525,6 +531,7 @@ async function autofill() {
 }
 
 async function generate() {
+  if (state.generating) return;
   if (!state.loggedIn) return toast("Sign in with Google to get 1 free 1K image every day.");
   if (!state.uploads.length || !state.productName.trim() || !state.requirements.trim()) return toast("Add a product image, product name, and design requirement before generating.");
   const cost = COSTS[state.resolution];
@@ -543,25 +550,52 @@ async function generate() {
     resolution: state.resolution,
     images: uploadsForApi()
   };
+  const optimisticId = `local_${Date.now()}`;
+  const previousPoints = state.points;
+  const previousFreeAvailable = state.freeAvailable;
+  const optimisticCost = free ? 0 : cost;
+  const optimisticJob = {
+    id: optimisticId,
+    ...draft,
+    cost: optimisticCost,
+    watermark: free,
+    billingType: free ? "daily_free" : "points",
+    source: state.uploads[0].url,
+    status: "processing",
+    progress: 1,
+    createdAt: Date.now(),
+    image: ""
+  };
+  state.generating = true;
+  if (free) state.freeAvailable = false;
+  if (!free) state.points = Math.max(0, state.points - cost);
+  state.jobs.unshift(optimisticJob);
+  render();
+  toast(free ? "Generation started. Free credit reserved." : `${cost} points reserved. Generation started.`);
 
   try {
     const data = await apiPost("/api/generate", draft);
     const job = normalizeApiJob(data.job, state.uploads[0].url);
     applyUser(data.job.user);
-    state.jobs.unshift(job);
+    state.jobs = state.jobs.map((item) => (item.id === optimisticId ? job : item));
+    writeCachedJobs(state.email, state.jobs);
     pollJob(job.id);
     toast(job.cost === 0 ? "Free 1K generation started for today." : `${job.cost} points deducted. Generation started.`);
   } catch (error) {
+    state.points = previousPoints;
+    state.freeAvailable = previousFreeAvailable;
     if (String(error.message).includes("Not enough points")) {
+      state.jobs = state.jobs.filter((item) => item.id !== optimisticId);
       state.modal = "topup";
       toast(error.message);
       render();
       return;
     }
     const fallbackCost = free ? 0 : cost;
-    if (!free) state.points -= cost;
-    state.jobs.unshift({ id: `job-${Date.now()}`, ...draft, cost: fallbackCost, watermark: free, source: state.uploads[0].url, status: "processing", progress: 1, createdAt: Date.now(), image: image("generated") });
+    state.jobs = state.jobs.map((item) => (item.id === optimisticId ? { ...item, id: `job-${Date.now()}`, cost: fallbackCost, image: image("generated") } : item));
     toast(`Local fallback generation started: ${error.message}`);
+  } finally {
+    state.generating = false;
   }
   render();
 }
@@ -572,11 +606,14 @@ async function refund(id) {
   try {
     const data = await apiPost(`/api/jobs/${id}/refund`, {});
     applyUser(data.user);
-    updateLocalJob(id, data.job);
+    state.jobs = state.jobs.filter((item) => item.id !== id);
+    writeCachedJobs(state.email, state.jobs);
+    render();
     toast("Points returned.");
   } catch (error) {
     state.points += job.cost || 0;
-    job.status = "refunded";
+    state.jobs = state.jobs.filter((item) => item.id !== id);
+    writeCachedJobs(state.email, state.jobs);
     toast(`Local refund applied: ${error.message}`);
     render();
   }
@@ -628,6 +665,7 @@ async function pollJob(id) {
 
 function updateLocalJob(id, patch) {
   state.jobs = state.jobs.map((job) => (job.id === id ? { ...job, ...patch } : job));
+  writeCachedJobs(state.email, state.jobs);
   render();
 }
 
@@ -670,7 +708,7 @@ async function loadJobs() {
   state.jobsLoading = true;
   try {
     const data = await apiGet("/api/jobs");
-    state.jobs = (data.jobs || []).map((job) => normalizeApiJob(job));
+    state.jobs = (data.jobs || []).map((job) => normalizeApiJob(job)).filter(isVisibleHistoryJob);
     writeCachedJobs(state.email, state.jobs);
   } finally {
     state.jobsLoading = false;
@@ -678,7 +716,8 @@ async function loadJobs() {
 }
 
 async function loadPortfolio(force = false) {
-  if (state.portfolioLoaded && !force) return;
+  if ((state.portfolioLoaded && !force) || state.portfolioLoading) return;
+  state.portfolioLoading = true;
   try {
     const data = await apiGet("/api/portfolio");
     state.portfolio = data.portfolio;
@@ -687,6 +726,8 @@ async function loadPortfolio(force = false) {
   } catch (error) {
     state.portfolioLoaded = true;
     toast(`Portfolio loaded locally: ${error.message}`);
+  } finally {
+    state.portfolioLoading = false;
   }
 }
 
@@ -1102,7 +1143,7 @@ function readCachedJobs(email) {
     if (!raw) return [];
     const cached = JSON.parse(raw);
     if (!Array.isArray(cached)) return [];
-    return cached.map((job) => normalizeApiJob(job)).slice(0, 30);
+    return cached.map((job) => normalizeApiJob(job)).filter(isVisibleHistoryJob).slice(0, 30);
   } catch {
     return [];
   }
@@ -1110,7 +1151,11 @@ function readCachedJobs(email) {
 
 function writeCachedJobs(email, jobs) {
   if (!email || email === "hi@lazy60.com") return;
-  localStorage.setItem(`lazy60_jobs_${String(email).toLowerCase()}`, JSON.stringify((jobs || []).slice(0, 30)));
+  localStorage.setItem(`lazy60_jobs_${String(email).toLowerCase()}`, JSON.stringify((jobs || []).filter(isVisibleHistoryJob).slice(0, 30)));
+}
+
+function isVisibleHistoryJob(job) {
+  return job && job.status !== "refunded" && !job.refunded;
 }
 
 function wait(ms) {
@@ -1185,6 +1230,7 @@ function resButton(r) {
 }
 
 function generateLabel() {
+  if (state.generating) return "Starting generation...";
   if (!state.loggedIn) return "Sign in with Google - 1 free 1K image every day";
   if (!state.paid && state.freeAvailable && state.resolution === "1K") return "Generate 1K Image - Free Today";
   return `Generate ${state.resolution} Image - ${COSTS[state.resolution]} Points`;

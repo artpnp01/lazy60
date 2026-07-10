@@ -904,7 +904,9 @@ async function listSupabaseJobs() {
     "generation_jobs",
     `user_id=eq.${user.id}&order=created_at.desc&limit=30`
   );
-  return rows.map((row) => jobFromSupabaseRow(row, { includeSource: false }));
+  return rows
+    .filter((row) => row.status !== "refunded" && !row.refunded)
+    .map((row) => jobFromSupabaseRow(row, { includeSource: false }));
 }
 
 async function waitlistHasEmail(email, feature) {

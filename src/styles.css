@@ -659,6 +659,11 @@ button:hover {
   border-color: var(--ink);
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
 .black {
   background: #000;
   border-color: #000;
@@ -1316,68 +1321,34 @@ textarea {
 }
 
 .payment-strip {
-  gap: 12px;
+  gap: 10px;
   text-transform: none;
+  flex-wrap: wrap;
 }
 
 .payment-strip .safe {
   color: var(--muted);
   text-transform: uppercase;
+  margin-right: 4px;
 }
 
 .pay-logo {
-  min-width: 62px;
-  min-height: 28px;
+  width: 76px;
+  height: 28px;
   border: 1px solid #e3dfd7;
   border-radius: 4px;
   background: #fff;
-  color: #111 !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 9px;
-  font-size: 13px;
-  line-height: 1;
-  font-weight: 900;
+  padding: 4px 8px;
 }
 
-.pay-logo.stripe {
-  color: #635bff !important;
-  font-size: 16px;
-}
-
-.pay-logo.visa {
-  color: #1a4fbc !important;
-}
-
-.pay-logo.amex {
-  background: #2e77bb;
-  color: #fff !important;
-}
-
-.pay-logo.apple,
-.pay-logo.google {
-  font-size: 12px;
-}
-
-.pay-logo.mc {
-  gap: 0;
-}
-
-.pay-logo.mc i {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+.pay-logo img {
+  max-width: 100%;
+  max-height: 18px;
+  object-fit: contain;
   display: block;
-}
-
-.pay-logo.mc i:first-child {
-  background: #eb001b;
-  margin-right: -6px;
-}
-
-.pay-logo.mc i:last-child {
-  background: #f79e1b;
 }
 
 .confirm {
