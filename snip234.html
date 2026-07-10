@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SNIP234 - Feed Your Screen to Any AI</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #fff;
+      color: #000;
+      font-family: "Arial Black", Impact, Haettenschweiler, sans-serif;
+      letter-spacing: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      padding: 72px 82px 62px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 54px;
+    }
+
+    .topline,
+    .subcopy,
+    .download small,
+    footer {
+      font-family: "Courier New", Courier, monospace;
+      letter-spacing: 0;
+    }
+
+    .topline {
+      font-size: 15px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(420px, 760px) minmax(420px, 1fr);
+      align-items: center;
+      gap: 86px;
+    }
+
+    h1 {
+      margin: 0 0 30px;
+      max-width: 720px;
+      font-size: clamp(70px, 7.2vw, 126px);
+      line-height: .82;
+      text-transform: uppercase;
+      letter-spacing: -4px;
+    }
+
+    .copy {
+      max-width: 680px;
+      margin: 0 0 40px;
+      color: #484848;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 22px;
+      line-height: 1.48;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .copy strong {
+      color: #000;
+      font-family: "Arial Black", Impact, sans-serif;
+      font-size: .95em;
+    }
+
+    .download {
+      width: min(100%, 730px);
+      min-height: 124px;
+      border: 2px solid #000;
+      background: #000;
+      color: #fff;
+      text-decoration: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      transition: background .12s ease, color .12s ease, transform .12s ease;
+    }
+
+    .download:hover {
+      background: #fff;
+      color: #000;
+      transform: translateY(-2px);
+    }
+
+    .download span {
+      font-size: clamp(26px, 2.8vw, 42px);
+      line-height: .9;
+      text-transform: uppercase;
+    }
+
+    .download small {
+      color: #a9a9a9;
+      font-size: 13px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .download:hover small {
+      color: #555;
+    }
+
+    .visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .visual img {
+      width: min(100%, 760px);
+      height: auto;
+      display: block;
+      background: #000;
+    }
+
+    footer {
+      border-top: 2px solid #000;
+      padding-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      gap: 40px;
+      color: #8f8f8f;
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 1.55;
+      text-transform: uppercase;
+    }
+
+    footer strong,
+    footer a {
+      color: #000;
+      text-decoration: none;
+    }
+
+    .links {
+      text-align: right;
+    }
+
+    @media (max-width: 980px) {
+      body {
+        padding: 36px 24px 34px;
+        gap: 38px;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+        gap: 48px;
+      }
+
+      h1 {
+        font-size: clamp(54px, 16vw, 88px);
+        letter-spacing: -2px;
+      }
+
+      .copy {
+        font-size: 18px;
+      }
+
+      .download {
+        min-height: 106px;
+      }
+
+      footer {
+        flex-direction: column;
+      }
+
+      .links {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topline">CAYMAN // SNIP234</header>
+
+  <main>
+    <section>
+      <h1>SNIP. MARK. FEED TO ANY AI.</h1>
+      <p class="copy">Stop describing your screen to Claude or GPT in 100 words. AI can see, yet you are still typing.</p>
+      <p class="copy">One hotkey to capture, zero friction to markup, press <strong>CTRL+V</strong> to inject into any AI input. <strong>5 seconds flat.</strong></p>
+      <a class="download" href="/assets/snip234/snip234-portable-single-instance.zip" download="snip234-portable-single-instance.zip">
+        <span>Download for Windows</span>
+        <small>SNIP234.EXE // portable build // chatbot visual companion</small>
+      </a>
+    </section>
+
+    <section class="visual" aria-label="SNIP234 product screenshot">
+      <img src="/assets/snip234/snip234-hero.png" alt="SNIP234 screenshot markup feeding a chat input" />
+    </section>
+  </main>
+
+  <footer>
+    <div>
+      Concept // quit WeChat popups. Stay in chatbot flow.<br />
+      Crafted by <strong>Cayman Lau</strong> / artpnp01@gmail.com
+    </div>
+    <div class="links">
+      <a href="https://log2chat.com">LOG2CHAT.COM</a><br />
+      <a href="https://lazy60.com">LAZY60.COM</a>
+    </div>
+  </footer>
+</body>
+</html>

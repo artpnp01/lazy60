@@ -29,7 +29,9 @@ const types = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
-  ".svg": "image/svg+xml"
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".zip": "application/zip"
 };
 
 http.createServer(async (request, response) => {
@@ -291,6 +293,7 @@ function serveStatic(pathname, response) {
   let cleanPath = decodeURIComponent(pathname);
   if (cleanPath === "/") cleanPath = "/index.html";
   if (cleanPath === "/portfolio") cleanPath = "/index.html";
+  if (cleanPath === "/snip234") cleanPath = "/snip234.html";
 
   const file = path.join(root, cleanPath);
   if (!file.startsWith(root)) {
